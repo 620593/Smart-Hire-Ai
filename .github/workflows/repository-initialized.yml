@@ -1,0 +1,12 @@
+name: Repository Initialized
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  initialize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print initialization message
+        run: echo "Repository Initialized Successfully"
