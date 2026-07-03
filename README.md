@@ -74,6 +74,18 @@ This repository has been initialized for future implementation work.
 3. Open a pull request using the repository template.
 4. Request review after local validation is complete.
 
+## Database Migration Workflow
+
+Use the same Alembic commands for every contributor once migrations begin:
+
+```bash
+uv run alembic revision --autogenerate -m "message"
+uv run alembic upgrade head
+uv run alembic downgrade -1
+uv run alembic current
+uv run alembic history
+```
+
 ## Branch Strategy
 
 - `main`: stable, releasable work only
