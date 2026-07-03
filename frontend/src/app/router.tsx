@@ -1,43 +1,68 @@
 import { createBrowserRouter } from "react-router-dom";
 
 import { MainLayout } from "@/components/layout/MainLayout";
-import { AuthLayout } from "@/components/layout/AuthLayout";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { ProtectedRoute } from "@/routes/ProtectedRoute";
 import { PublicRoute } from "@/routes/PublicRoute";
-import { DashboardPage } from "@/pages/Dashboard/DashboardPage";
+
+// Pages
 import { LandingPage } from "@/pages/Landing/LandingPage";
 import { LoginPage } from "@/pages/Login/LoginPage";
-import { NotFoundPage } from "@/pages/NotFound/NotFoundPage";
 import { RegisterPage } from "@/pages/Register/RegisterPage";
+import { GetStartedPage } from "@/pages/GetStarted/GetStartedPage";
+import { RecruiterRegisterPage } from "@/pages/RecruiterRegister/RecruiterRegisterPage";
+import { RoleDashboard } from "@/pages/Dashboard/RoleDashboard";
+import { InterviewPage } from "@/pages/Interview/InterviewPage";
+import { ReportPage } from "@/pages/Report/ReportPage";
+import { ResumePage } from "@/pages/Resume/ResumePage";
+import { UnauthorizedPage } from "@/pages/Error/UnauthorizedPage";
+import { ForbiddenPage } from "@/pages/Error/ForbiddenPage";
+import { NotFoundPage } from "@/pages/NotFound/NotFoundPage";
 
 export const router = createBrowserRouter([
+  // ── Landing (has its own MainLayout navbar) ──
   {
     element: <MainLayout />,
     children: [
-      {
-        index: true,
-        element: <LandingPage />,
-      },
+      { index: true, element: <LandingPage /> },
     ],
   },
+
+  // ── Public auth pages — all full-screen split-panel layouts ──
   {
+    path: "/login",
     element: (
       <PublicRoute>
-        <AuthLayout />
+        <LoginPage />
       </PublicRoute>
     ),
-    children: [
-      {
-        path: "/login",
-        element: <LoginPage />,
-      },
-      {
-        path: "/register",
-        element: <RegisterPage />,
-      },
-    ],
   },
+  {
+    path: "/register",
+    element: (
+      <PublicRoute>
+        <RegisterPage />
+      </PublicRoute>
+    ),
+  },
+  {
+    path: "/get-started",
+    element: (
+      <PublicRoute>
+        <GetStartedPage />
+      </PublicRoute>
+    ),
+  },
+  {
+    path: "/recruiter-register",
+    element: (
+      <PublicRoute>
+        <RecruiterRegisterPage />
+      </PublicRoute>
+    ),
+  },
+
+  // ── Protected dashboard routes (DashboardLayout has sidebar) ──
   {
     element: (
       <ProtectedRoute>
@@ -45,14 +70,15 @@ export const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      {
-        path: "/dashboard",
-        element: <DashboardPage />,
-      },
+      { path: "/dashboard", element: <RoleDashboard /> },
+      { path: "/interviews", element: <InterviewPage /> },
+      { path: "/reports", element: <ReportPage /> },
+      { path: "/resume", element: <ResumePage /> },
     ],
   },
-  {
-    path: "*",
-    element: <NotFoundPage />,
-  },
+
+  // ── Error pages ──
+  { path: "/unauthorized", element: <UnauthorizedPage /> },
+  { path: "/forbidden", element: <ForbiddenPage /> },
+  { path: "*", element: <NotFoundPage /> },
 ]);

@@ -11,7 +11,7 @@ from app.core.security.tokens import create_access_token, create_refresh_token, 
 from app.core.security.exceptions import SecurityException
 from app.models.user import User
 from app.repositories.user import UserRepository
-from app.schemas.auth import LoginRequest, RegisterRequest
+from app.schemas.auth import LoginRequest, RecruiterRegisterRequest, RegisterRequest
 
 
 class AuthenticationService:
@@ -65,6 +65,43 @@ class AuthenticationService:
             phone_number=user_data.phone_number,
         )
 
+    async def register_recruiter(self, user_data: RecruiterRegisterRequest) -> User:
+        """Register a new recruiter pending admin approval.
+
+        Args:
+            user_data: Recruiter registration request with company details.
+
+        Returns:
+            The registered User model instance (is_approved=False).
+
+        Raises:
+            SecurityException: If email or username is already registered.
+        """
+        existing_email = await self.user_repo.find_by_email(user_data.email)
+        if existing_email:
+            raise SecurityException(
+                status_code=400,
+                code="EMAIL_ALREADY_REGISTERED",
+                message="A user with this email address already exists.",
+            )
+
+        existing_username = await self.user_repo.find_by_username(user_data.username)
+        if existing_username:
+            raise SecurityException(
+                status_code=400,
+                code="USERNAME_ALREADY_TAKEN",
+                message="A user with this username already exists.",
+            )
+
+        hashed_password = self.password_manager.hash_password(user_data.password)
+        return await self.user_repo.create_recruiter_user(
+            email=user_data.email,
+            username=user_data.username,
+            hashed_password=hashed_password,
+            full_name=user_data.full_name,
+            company_name=user_data.company_name,
+        )
+
     async def login(self, login_data: LoginRequest) -> tuple[User, str, str]:
         """Authenticate user, update login timestamp, and generate tokens.
 
@@ -98,6 +135,10 @@ class AuthenticationService:
 
         if not user.is_active:
             raise Unauthorized("User account is disabled.")
+
+        # Block recruiters who have not been approved by admin yet
+        if not user.is_approved:
+            raise Unauthorized("Your recruiter account is pending admin approval. You will be notified once approved.")
 
         # Rehash password if parameters changed
         if self.password_manager.needs_rehash(user.hashed_password):

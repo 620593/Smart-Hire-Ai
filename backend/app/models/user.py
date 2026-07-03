@@ -32,6 +32,8 @@ class User(BaseModel):
     profile_picture: Mapped[str | None] = mapped_column(String(length=255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    company_name: Mapped[str | None] = mapped_column(String(length=255), nullable=True)
     last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     roles: Mapped[list["Role"]] = relationship(

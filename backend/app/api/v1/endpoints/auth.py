@@ -10,6 +10,7 @@ from app.models.user import User
 from app.schemas.auth import (
     CurrentUserResponse,
     LoginRequest,
+    RecruiterRegisterRequest,
     RegisterRequest,
     RefreshTokenRequest,
     TokenResponse,
@@ -33,6 +34,22 @@ async def register(
     auth_service = AuthenticationService(db)
     user = await auth_service.register(payload)
     return user
+
+
+@router.post(
+    "/register/recruiter",
+    response_model=CurrentUserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def register_recruiter(
+    payload: RecruiterRegisterRequest,
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Register a new recruiter account (requires admin approval before login)."""
+    auth_service = AuthenticationService(db)
+    user = await auth_service.register_recruiter(payload)
+    return user
+
 
 
 @router.post(

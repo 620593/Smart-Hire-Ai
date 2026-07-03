@@ -115,6 +115,92 @@ class UserRepository:
         await self.db.refresh(user)
         return user
 
+    async def create_recruiter_user(
+        self,
+        email: str,
+        username: str,
+        hashed_password: str,
+        full_name: str,
+        company_name: str,
+    ) -> User:
+        """Create a new recruiter user pending admin approval.
+
+        Assigns the RECRUITER role and sets is_approved=False.
+
+        Args:
+            email: Recruiter's email.
+            username: Recruiter's username.
+            hashed_password: The hashed password.
+            full_name: Recruiter's full display name.
+            company_name: The company the recruiter belongs to.
+
+        Returns:
+            The created user instance.
+        """
+        role_query = select(Role).where(Role.name == UserRole.RECRUITER)
+        role_result = await self.db.execute(role_query)
+        recruiter_role = role_result.scalar_one_or_none()
+
+        if not recruiter_role:
+            recruiter_role = Role(name=UserRole.RECRUITER, description="Recruiter role")
+            self.db.add(recruiter_role)
+            await self.db.flush()
+
+        # Split full_name into first/last
+        name_parts = full_name.strip().split(" ", 1)
+        first_name = name_parts[0]
+        last_name = name_parts[1] if len(name_parts) > 1 else None
+
+        user = User(
+            email=email,
+            username=username,
+            hashed_password=hashed_password,
+            first_name=first_name,
+            last_name=last_name,
+            company_name=company_name,
+            is_active=True,
+            is_verified=False,
+            is_approved=False,  # Needs admin approval
+        )
+        user.roles.append(recruiter_role)
+        self.db.add(user)
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
+    async def list_pending_recruiters(self) -> list[User]:
+        """List all recruiter accounts pending admin approval."""
+        query = (
+            select(User)
+            .join(User.roles)
+            .where(Role.name == UserRole.RECRUITER, User.is_approved == False)  # noqa: E712
+        )
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def set_recruiter_approval(self, user_id: UUID, approved: bool) -> User | None:
+        """Approve or reject a recruiter's account.
+
+        Args:
+            user_id: The UUID of the recruiter.
+            approved: True to approve, False to reject/deactivate.
+
+        Returns:
+            The updated user instance or None if not found.
+        """
+        user = await self.find_by_id(user_id)
+        if not user:
+            return None
+        query = (
+            update(User)
+            .where(User.id == user_id)
+            .values(is_approved=approved, is_active=approved)
+        )
+        await self.db.execute(query)
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
     async def update_last_login(self, user_id: UUID) -> None:
         """Update the last login timestamp of a user.
 

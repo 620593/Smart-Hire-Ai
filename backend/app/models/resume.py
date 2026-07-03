@@ -47,6 +47,14 @@ class Resume(BaseModel):
         DateTime(timezone=True),
         nullable=True,
     )
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    parser_version: Mapped[str | None] = mapped_column(
+        String(length=50),
+        nullable=True,
+    )
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+import time
+
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import RequestResponseEndpoint
 
 from app.api.router import create_api_router
 from app.api.v1.endpoints.root import router as root_router
 from app.core.config import get_settings
 from app.core.lifespan import lifespan
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, logger_factory
 from app.middleware.exception_handler import register_exception_handlers
-from app.middleware.process_time import process_time_middleware
-from app.middleware.request_logging import request_logging_middleware
 
 
 def create_app() -> FastAPI:
@@ -34,21 +35,40 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Register exception handlers
+    register_exception_handlers(application)
+
+    # ── Custom HTTP middleware (skip OPTIONS preflight requests) ──
+    @application.middleware("http")
+    async def log_requests(request: Request, call_next: RequestResponseEndpoint) -> Response:
+        response = await call_next(request)
+        if request.method != "OPTIONS":
+            logger = logger_factory("app.middleware.request")
+            logger.info("%s %s -> %s", request.method, request.url.path, response.status_code)
+        return response
+
+    @application.middleware("http")
+    async def add_process_time_header(request: Request, call_next: RequestResponseEndpoint) -> Response:
+        start = time.perf_counter()
+        response = await call_next(request)
+        response.headers["X-Process-Time"] = f"{time.perf_counter() - start:.6f}"
+        return response
+
+    # ── CORS — must be added LAST so it is the outermost middleware ──
+    # Starlette processes middleware in LIFO order: the last-added middleware
+    # runs first. CORSMiddleware handles OPTIONS preflight and adds CORS
+    # headers before any custom middleware sees the request.
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["*"],
     )
 
     application.include_router(create_api_router(settings.api_v1_prefix))
     application.include_router(root_router)
-
-    application.middleware("http")(request_logging_middleware)
-    application.middleware("http")(process_time_middleware)
-
-    register_exception_handlers(application)
 
     return application
 

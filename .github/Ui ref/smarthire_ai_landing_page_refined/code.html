@@ -1,0 +1,345 @@
+<html class="dark" lang="en"><head></head><body class="selection:bg-primary-container selection:text-white">```html
+
+
+
+    <meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SmartHire AI | Master Your Next Interview</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Geist:wght@400;600;700;900&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        :root {
+            --primary: #c3c0ff;
+            --background: #0b1326;
+        }
+        body {
+            background-color: #0b1326;
+            color: #dae2fd;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .ai-border {
+            position: relative;
+        }
+        .ai-border::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 15%;
+            height: 70%;
+            width: 2px;
+            background: linear-gradient(to bottom, #4f46e5, #a855f7);
+        }
+        .glow-button:hover {
+            box-shadow: 0 0 25px rgba(96, 165, 250, 0.4);
+        }
+        .nav-link-active {
+            color: #c3c0ff;
+            position: relative;
+        }
+        .nav-link-active::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: #c3c0ff;
+            border-radius: 2px;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#004395",
+                        "on-secondary-fixed": "#23005c",
+                        "primary-fixed": "#e2dfff",
+                        "outline": "#918fa1",
+                        "background": "#0b1326",
+                        "secondary-fixed-dim": "#d0bcff",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "on-primary-fixed": "#0f0069",
+                        "secondary-fixed": "#e9ddff",
+                        "on-tertiary": "#002e6a",
+                        "surface-container-highest": "#2d3449",
+                        "slate-800": "#1E293B",
+                        "surface-tint": "#c3c0ff",
+                        "surface-bright": "#31394d",
+                        "on-secondary": "#3c0091",
+                        "on-secondary-fixed-variant": "#5516be",
+                        "surface-container": "#171f33",
+                        "surface-container-low": "#131b2e",
+                        "on-surface-variant": "#c7c4d8",
+                        "tertiary": "#adc6ff",
+                        "on-surface": "#dae2fd",
+                        "inverse-primary": "#4d44e3",
+                        "outline-variant": "#464555",
+                        "warning": "#F59E0B",
+                        "on-background": "#dae2fd",
+                        "surface-container-lowest": "#060e20",
+                        "primary-container": "#4f46e5",
+                        "on-error": "#690005",
+                        "surface": "#0b1326",
+                        "on-secondary-container": "#c4abff",
+                        "primary": "#c3c0ff",
+                        "tertiary-fixed": "#d8e2ff",
+                        "success": "#10B981",
+                        "on-primary": "#1d00a5",
+                        "inverse-surface": "#dae2fd",
+                        "on-tertiary-container": "#cedbff",
+                        "secondary-container": "#571bc1",
+                        "electric-blue": "#60A5FA",
+                        "error": "#F43F5E",
+                        "slate-50": "#F8FAFC",
+                        "slate-400": "#94A3B8",
+                        "on-primary-container": "#dad7ff",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "tertiary-fixed-dim": "#adc6ff",
+                        "surface-dim": "#0b1326",
+                        "tertiary-container": "#005cc6",
+                        "surface-variant": "#2d3449",
+                        "on-tertiary-fixed": "#001a42",
+                        "error-container": "#93000a",
+                        "inverse-on-surface": "#283044",
+                        "surface-container-high": "#222a3d",
+                        "secondary": "#d0bcff",
+                        "on-error-container": "#ffdad6"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin-desktop": "48px",
+                        "sm": "8px",
+                        "xl": "32px",
+                        "lg": "24px",
+                        "margin-mobile": "16px",
+                        "gutter": "24px",
+                        "base": "8px",
+                        "xs": "4px",
+                        "md": "16px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["JetBrains Mono"],
+                        "display": ["Geist"],
+                        "headline-md": ["Geist"],
+                        "headline-lg-mobile": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-lg": ["Geist"],
+                        "label-md": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "display": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.02em", "fontWeight": "500"}]
+                    }
+                },
+            },
+        }
+    </script>
+<!-- Navbar -->
+<nav class="bg-background/80 backdrop-blur-xl border-b border-white/10 w-full sticky top-0 z-50 shadow-sm">
+<div class="flex justify-between items-center px-margin-desktop py-md max-w-[1280px] mx-auto">
+<div class="flex items-center gap-xl">
+<span class="font-headline-md text-headline-md font-bold text-on-surface">SmartHire AI</span>
+<div class="hidden md:flex gap-lg">
+<a class="font-body-md text-body-md nav-link-active" href="#">Features</a>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">Pricing</a>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">Testimonials</a>
+</div>
+</div>
+<div class="flex items-center gap-md">
+<button class="font-body-md text-body-md text-on-surface-variant hover:text-primary active:scale-95 transition-all">Login</button>
+<button class="bg-primary-container text-white px-lg py-sm rounded-lg font-body-md text-body-md font-bold glow-button active:scale-95 transition-all">Get Started</button>
+</div>
+</div>
+</nav>
+<!-- Hero Section -->
+<section class="relative pt-24 pb-16 px-margin-mobile md:px-margin-desktop max-w-[1280px] mx-auto overflow-hidden">
+<div class="text-center max-w-4xl mx-auto mb-16">
+<div class="inline-flex items-center gap-xs px-md py-1 rounded-full bg-primary-container/10 border border-primary/20 mb-base">
+<span class="material-symbols-outlined text-sm text-primary">auto_awesome</span>
+<span class="font-label-sm text-label-sm text-primary tracking-widest uppercase">AI-Powered Success</span>
+</div>
+<h1 class="font-display text-display md:text-[64px] md:leading-[72px] mb-md text-slate-50">
+                Master your next <span class="text-transparent bg-clip-text bg-gradient-to-r from-primary to-electric-blue">interview</span> with AI.
+            </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mx-auto mb-xl">
+                Practice with realistic AI avatars, get instant behavioral feedback, and analyze your communication metrics to land your dream role at top tech companies.
+            </p>
+<div class="flex flex-col sm:flex-row gap-md justify-center">
+<button class="bg-primary-container text-white px-xl py-md rounded-xl font-headline-md text-headline-md font-bold shadow-[0_0_40px_-10px_rgba(79,70,229,0.6)] glow-button active:scale-95 transition-all">Start Free Trial</button>
+<button class="glass-card text-white px-xl py-md rounded-xl font-headline-md text-headline-md border-white/20 flex items-center gap-sm justify-center active:scale-95 transition-all hover:bg-white/10">
+<span class="material-symbols-outlined">play_circle</span> View Demo
+                </button>
+</div>
+</div>
+<!-- Hero Graphic -->
+<div class="relative group">
+<div class="absolute -inset-1 bg-gradient-to-r from-primary to-purple-500 rounded-2xl blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
+<div class="relative glass-card rounded-2xl p-md shadow-2xl overflow-hidden">
+<div class="bg-slate-800 rounded-lg h-[400px] md:h-[600px] relative overflow-hidden">
+<img class="w-full h-full object-cover opacity-80" data-alt="A sophisticated dark-themed dashboard UI for SmartHire AI. The interface shows a grid of interview metrics, a 3D animated avatar of a tech recruiter, and a real-time speech sentiment chart. The color palette is deep indigo and vibrant purple, reflecting a high-tech AI atmosphere. Soft glowing edges and glassmorphic panels create depth and professionalism." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAnwVj_3PMRC9nU3FJ9ju80G7Oi-wz6iDrIGsVAREB5woTMwGwZRuV8pBAojgx0LySOR2_NB9ESL0K0KFtm6cFJzDhhKVI9xLwtLBCZABZpwXrmenIcQcVRnxMiV2niNMYJlvHnryCZb2ZU292T8a1BBhHnkmhFQYltvzkAt7-woKzEcdWKnei-8cpSc1PamOmgx1OY1zKzZi6xQjbluVLIkGr6mt2Zl_2mcLei1P4bSlUekO5s1dd3Rw"/>
+<div class="absolute top-md right-md flex flex-col gap-sm">
+<div class="glass-card p-sm rounded-lg border-l-2 border-primary">
+<p class="font-label-sm text-label-sm text-primary mb-1 uppercase">Confidence Score</p>
+<p class="font-headline-md text-headline-md text-white">92%</p>
+</div>
+<div class="glass-card p-sm rounded-lg border-l-2 border-success">
+<p class="font-label-sm text-label-sm text-success mb-1 uppercase">Keyword Match</p>
+<p class="font-headline-md text-headline-md text-white">High</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Social Proof -->
+<section class="py-24 border-y border-white/5 bg-surface-container-lowest/50">
+<div class="max-w-[1280px] mx-auto px-margin-desktop text-center">
+<p class="font-label-md text-label-md text-on-surface-variant mb-lg opacity-60">TRUSTED BY 10,000+ ENGINEERS FROM THE WORLD'S BEST COMPANIES</p>
+<div class="flex flex-wrap justify-center items-center gap-xl md:gap-32 grayscale opacity-40 hover:grayscale-0 transition-all duration-500">
+<span class="font-display text-headline-lg font-bold">Google</span>
+<span class="font-display text-headline-lg font-bold">Amazon</span>
+<span class="font-display text-headline-lg font-bold">Stripe</span>
+<span class="font-display text-headline-lg font-bold">Netflix</span>
+<span class="font-display text-headline-lg font-bold">Meta</span>
+</div>
+</div>
+</section>
+<!-- Feature Grid -->
+<section class="py-40 px-margin-mobile md:px-margin-desktop max-w-[1280px] mx-auto">
+<div class="mb-16">
+<h2 class="font-display text-headline-lg md:text-[48px] text-white mb-base">Precision-engineered for <span class="text-primary">high-stakes</span> interviews.</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-xl">Our suite of tools uses proprietary LLMs trained on 50k+ successful technical and behavioral interviews.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-gutter">
+<!-- Feature 1 -->
+<div class="md:col-span-8 glass-card p-xl rounded-2xl group hover:border-primary/40 transition-colors flex flex-col min-h-[440px]">
+<div class="flex flex-col h-full">
+<span class="material-symbols-outlined text-primary text-4xl mb-md" style="font-variation-settings: 'FILL' 1;">video_chat</span>
+<h3 class="font-headline-md text-headline-md text-white mb-sm">Live Mock Interviews</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-lg max-w-md">Practice with hyper-realistic AI avatars that respond to your body language and follow up on your answers like a real hiring manager.</p>
+<div class="mt-auto bg-slate-800 rounded-lg h-48 overflow-hidden relative">
+<img class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="A split-screen view of a digital mock interview. On the left, a professional female AI avatar with realistic facial expressions is listening intently. On the right, a waveform visualization represents the user's audio input. The background is a blurred office environment in dark indigo tones, maintaining the SmartHire AI corporate aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA05b7KPd9fexzmW-UYQw_3Q-7H9z2xgj9FsUTxam8E7kZRt1HlL1_msylcTlTuLLinGTb1JV1BWL_opAAjmWbMwFph55FOLGNQcEnyQ9Pjai1KQxtMzE7fl4rnA2pwrbv01VV-dsP0SnXhtSkEvHwWI4PLdOYZGo7A7GRBJkfnRR0GCoVmc4MsKERU7QXq9gEyt-hbfjIzBTnPJaiM528qmFD4_ZbD5kGz5IxH38I-BPJgnZpV_UAvkg"/>
+</div>
+</div>
+</div>
+<!-- Feature 2 -->
+<div class="md:col-span-4 glass-card p-xl rounded-2xl ai-border flex flex-col min-h-[440px]">
+<span class="material-symbols-outlined text-purple-500 text-4xl mb-md" style="font-variation-settings: 'FILL' 1;">analytics</span>
+<h3 class="font-headline-md text-headline-md text-white mb-sm">Resume Analysis</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Our AI cross-references your CV with thousands of job descriptions to pinpoint exactly where you stand and what to improve.</p>
+<div class="mt-auto space-y-sm">
+<div class="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+<div class="h-full bg-primary w-4/5"></div>
+</div>
+<p class="font-label-md text-label-md text-primary font-bold">Matching: 82%</p>
+</div>
+</div>
+<!-- Feature 3 -->
+<div class="md:col-span-4 glass-card p-xl rounded-2xl flex flex-col min-h-[320px]">
+<span class="material-symbols-outlined text-electric-blue text-4xl mb-md">monitoring</span>
+<h3 class="font-headline-md text-headline-md text-white mb-sm">Communication Tracking</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Track your pace, filler words, and sentiment in real-time. Learn to speak with authority and clarity.</p>
+</div>
+<!-- Feature 4 -->
+<div class="md:col-span-8 glass-card p-xl rounded-2xl flex flex-col md:flex-row gap-lg min-h-[320px]">
+<div class="md:w-1/2">
+<span class="material-symbols-outlined text-success text-4xl mb-md">groups</span>
+<h3 class="font-headline-md text-headline-md text-white mb-sm">Recruiter Analytics</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Get the exact data hiring managers look for. We provide a score breakdown for technical depth, culture fit, and soft skills.</p>
+</div>
+<div class="md:w-1/2 bg-slate-800/50 rounded-lg p-md flex flex-col justify-center">
+<div class="flex justify-between items-center mb-sm border-b border-white/5 pb-2">
+<span class="font-label-sm text-label-sm">Leadership</span>
+<span class="font-label-sm text-label-sm text-success font-bold">9.4/10</span>
+</div>
+<div class="flex justify-between items-center mb-sm border-b border-white/5 pb-2">
+<span class="font-label-sm text-label-sm">Technicality</span>
+<span class="font-label-sm text-label-sm text-primary font-bold">8.2/10</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-label-sm text-label-sm">Communication</span>
+<span class="font-label-sm text-label-sm text-electric-blue font-bold">8.9/10</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Pricing Section -->
+<section class="py-32 bg-surface-container-low/30 relative">
+<div class="max-w-[1280px] mx-auto px-margin-mobile md:px-margin-desktop">
+<div class="text-center mb-16">
+<h2 class="font-display text-headline-lg md:text-[48px] text-white mb-base">Invest in your <span class="text-primary">career</span>.</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Plans that scale with your job search needs.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-lg max-w-6xl mx-auto">
+<!-- Free Plan -->
+<div class="glass-card p-xl rounded-2xl flex flex-col border border-white/5">
+<p class="font-label-md text-label-md text-on-surface-variant mb-base uppercase">Free Tier</p>
+<h3 class="font-headline-lg text-headline-lg text-white mb-md">$0<span class="text-body-md font-normal text-on-surface-variant">/mo</span></h3>
+<ul class="space-y-sm mb-xl">
+<li class="flex items-center gap-sm font-body-sm text-on-surface-variant"><span class="material-symbols-outlined text-success text-sm">check_circle</span> 1 Mock Interview / mo</li>
+<li class="flex items-center gap-sm font-body-sm text-on-surface-variant"><span class="material-symbols-outlined text-success text-sm">check_circle</span> Basic Resume Scoring</li>
+<li class="flex items-center gap-sm font-body-sm text-on-surface-variant"><span class="material-symbols-outlined text-success text-sm">check_circle</span> Community Access</li>
+</ul>
+<button class="w-full py-sm rounded-lg border border-white/10 font-label-md text-label-md hover:bg-white/5 mt-auto">Get Started</button>
+</div>
+<!-- Pro Plan -->
+<div class="glass-card p-xl rounded-2xl flex flex-col border-2 border-primary relative overflow-hidden transform scale-105 z-10 shadow-2xl shadow-primary/20">
+<div class="absolute top-0 right-0 bg-primary text-on-primary px-md py-1 rounded-bl-lg font-label-sm text-[10px] font-bold uppercase tracking-widest">Most Popular</div>
+<p class="font-label-md text-label-md text-primary mb-base uppercase font-bold">Pro Tier</p>
+<h3 class="font-headline-lg text-headline-lg text-white mb-md">$19<span class="text-body-md font-normal text-on-surface-variant">/mo</span></h3>
+<ul class="space-y-sm mb-xl">
+<li class="flex items-center gap-sm font-body-sm text-white"><span class="material-symbols-outlined text-primary text-sm">check_circle</span> Unlimited AI Interviews</li>
+<li class="flex items-center gap-sm font-body-sm text-white"><span class="material-symbols-outlined text-primary text-sm">check_circle</span> Advanced Sentiment Analysis</li>
+<li class="flex items-center gap-sm font-body-sm text-white"><span class="material-symbols-outlined text-primary text-sm">check_circle</span> Custom Feedback Reports</li>
+<li class="flex items-center gap-sm font-body-sm text-white"><span class="material-symbols-outlined text-primary text-sm">check_circle</span> Technical Question Banks</li>
+</ul>
+<button class="w-full py-md rounded-lg bg-primary-container text-white font-headline-md text-headline-md font-bold glow-button mt-auto">Go Pro</button>
+</div>
+<!-- Enterprise Plan -->
+<div class="glass-card p-xl rounded-2xl flex flex-col border border-white/5">
+<p class="font-label-md text-label-md text-on-surface-variant mb-base uppercase">Enterprise</p>
+<h3 class="font-headline-lg text-headline-lg text-white mb-md">Custom</h3>
+<ul class="space-y-sm mb-xl">
+<li class="flex items-center gap-sm font-body-sm text-on-surface-variant"><span class="material-symbols-outlined text-success text-sm">check_circle</span> Bulk Licensing for Schools</li>
+<li class="flex items-center gap-sm font-body-sm text-on-surface-variant"><span class="material-symbols-outlined text-success text-sm">check_circle</span> API Access for ATS</li>
+<li class="flex items-center gap-sm font-body-sm text-on-surface-variant"><span class="material-symbols-outlined text-success text-sm">check_circle</span> Dedicated Success Manager</li>
+</ul>
+<button class="w-full py-md rounded-lg bg-white/5 border border-white/20 text-white font-headline-md text-headline-md font-bold hover:bg-white/10 active:scale-95 transition-all mt-auto">Contact Sales</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Footer -->
+<footer class="bg-surface-container-lowest py-xl border-t border-white/10">
+<div class="max-w-[1280px] mx-auto px-margin-desktop">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-xl mb-32">
+<div class="col-span-2 md:col-span-1">
+<span class="font-display text-headline-md font-bold text-on-surface block mb-md">SmartHire AI</span>
+<p class="font-display text-body-sm text-on-surface-variant mb-lg leading-relaxed">Precision intelligence for the modern professional. Built in San Francisco.</p>
+<div class="flex gap-md">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary">language</span>
+</div></div></div></div></footer></body></html>
