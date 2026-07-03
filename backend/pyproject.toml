@@ -12,6 +12,9 @@ dependencies = [
     "pydantic>=2.8.2",
     "pydantic-settings>=2.4.0",
     "python-dotenv>=1.0.1",
+    "pwdlib[argon2]",
+    "pyjwt>=2.8.0",
+    "email-validator>=2.3.0",
 ]
 
 [project.scripts]
@@ -26,3 +29,10 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]

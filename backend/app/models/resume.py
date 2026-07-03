@@ -41,7 +41,6 @@ class Resume(BaseModel):
         SAEnum(ResumeStatus, name="resume_status_enum", native_enum=False, length=20),
         default=ResumeStatus.PENDING,
         server_default=ResumeStatus.PENDING.value,
-        index=True,
         nullable=False,
     )
     parsed_at: Mapped[datetime | None] = mapped_column(

@@ -59,6 +59,23 @@ def register_exception_handlers(app: FastAPI) -> None:
             ),
         )
 
+    from app.core.security.exceptions import SecurityException
+
+    @app.exception_handler(SecurityException)
+    async def security_exception_handler(request: Request, exc: SecurityException) -> JSONResponse:
+        """Handle security domain exceptions with standard error envelope."""
+
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": {
+                    "code": exc.code,
+                    "message": exc.message,
+                    "details": exc.details,
+                }
+            },
+        )
+
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
         request: Request,

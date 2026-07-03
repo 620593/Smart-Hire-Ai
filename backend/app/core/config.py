@@ -47,6 +47,17 @@ class Settings(BaseSettings):
     database_pool_recycle: int = Field(default=1800, alias="DATABASE_POOL_RECYCLE")
     database_url: str = Field(default="", alias="DATABASE_URL")
 
+    jwt_secret_key: str = Field(default="dev_secret_key_change_me_in_production", alias="JWT_SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    access_token_expire_minutes: int = Field(default=15, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    refresh_token_expire_days: int = Field(default=7, alias="REFRESH_TOKEN_EXPIRE_DAYS")
+
+    password_hash_memory_cost: int = Field(default=65536, alias="PASSWORD_HASH_MEMORY_COST")
+    password_hash_time_cost: int = Field(default=3, alias="PASSWORD_HASH_TIME_COST")
+    password_hash_parallelism: int = Field(default=4, alias="PASSWORD_HASH_PARALLELISM")
+    password_hash_hash_len: int = Field(default=32, alias="PASSWORD_HASH_HASH_LEN")
+    password_hash_salt_len: int = Field(default=16, alias="PASSWORD_HASH_SALT_LEN")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
