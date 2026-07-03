@@ -1,0 +1,1 @@
+"""Endpoint modules for SmartHire AI backend API v1."""

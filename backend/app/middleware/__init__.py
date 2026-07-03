@@ -1,0 +1,1 @@
+"""HTTP middleware for SmartHire AI backend."""

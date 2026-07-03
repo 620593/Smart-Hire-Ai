@@ -1,0 +1,1 @@
+"""API package for SmartHire AI backend."""
