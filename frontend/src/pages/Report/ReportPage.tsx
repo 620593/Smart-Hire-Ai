@@ -1,380 +1,640 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
+import type {
+  InterviewFinalizeResponse,
+  QuestionAnalysisResponse,
+  WeakQuestion,
+} from "@/types/interview";
+
+// ---------------------------------------------------------------------------
+// Animation variants
+// ---------------------------------------------------------------------------
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { staggerChildren: 0.08 } },
+};
+
+const itemVariants = {
+  hidden: { y: 20, opacity: 0 },
+  show: {
+    y: 0,
+    opacity: 1,
+    transition: { type: "spring" as const, stiffness: 260, damping: 25 },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function scoreColor(score: number): string {
+  if (score >= 80) return "text-success";
+  if (score >= 60) return "text-warning";
+  return "text-error";
+}
+
+function scoreBorderColor(score: number): string {
+  if (score >= 80) return "border-l-success";
+  if (score >= 60) return "border-l-warning";
+  return "border-l-error";
+}
+
+function scoreGradient(score: number): string {
+  if (score >= 80) return "from-success/5";
+  if (score >= 60) return "from-warning/5";
+  return "from-error/5";
+}
+
+function recommendationBadgeColor(rec: string): string {
+  switch (rec) {
+    case "Strong Recommend": return "bg-success/10 text-success border-success/20";
+    case "Recommend":        return "bg-primary/10 text-primary border-primary/20";
+    case "Neutral":          return "bg-warning/10 text-warning border-warning/20";
+    default:                 return "bg-error/10 text-error border-error/20";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function StatBar({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex justify-between text-xs font-mono">
+        <span className="text-on-surface-variant">{label}</span>
+        <span className={`font-bold ${scoreColor(value)}`}>{Math.round(value)}%</span>
+      </div>
+      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${value}%` }}
+          transition={{ duration: 1.2, ease: "easeOut", delay: 0.3 }}
+          className={`h-full rounded-full ${
+            value >= 80 ? "bg-success" : value >= 60 ? "bg-warning" : "bg-error"
+          }`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function QuestionCard({
+  qr,
+  isWeak,
+  weak,
+}: {
+  qr: QuestionAnalysisResponse;
+  isWeak: boolean;
+  weak?: WeakQuestion;
+}) {
+  const [expanded, setExpanded] = useState(isWeak);
+  const r = qr.result;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`glass-card p-6 rounded-xl border-l-4 bg-gradient-to-r to-transparent ${scoreBorderColor(r.overall_score)} ${scoreGradient(r.overall_score)}`}
+    >
+      <div className="flex justify-between items-start gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] font-bold text-on-surface-variant uppercase font-mono tracking-wider">
+              Q{qr.question_index + 1}
+            </span>
+            {isWeak && (
+              <span className="px-2 py-0.5 bg-error/10 text-error text-[9px] font-bold uppercase rounded font-mono border border-error/20">
+                Needs Work
+              </span>
+            )}
+          </div>
+          <p className="text-sm font-semibold text-on-surface leading-snug">
+            {qr.question_text}
+          </p>
+          {r.answer_summary && (
+            <p className="text-xs text-on-surface-variant mt-1 italic leading-relaxed">
+              "{r.answer_summary}"
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span className={`text-2xl font-black font-mono ${scoreColor(r.overall_score)}`}>
+            {r.overall_score}
+          </span>
+          <span className="text-[9px] text-on-surface-variant font-mono">/100</span>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-[10px] text-primary/60 hover:text-primary font-mono mt-1 transition-colors"
+          >
+            {expanded ? "Hide ▲" : "Details ▼"}
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-4 pt-4 border-t border-white/5 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Score breakdown */}
+              <div className="space-y-3">
+                <h5 className="text-[10px] font-bold text-on-surface-variant uppercase font-mono tracking-wider mb-2">
+                  Score Breakdown
+                </h5>
+                <StatBar label="Answer Quality" value={r.answer_quality_score} />
+                <StatBar label="Communication" value={r.communication_score} />
+                <StatBar label="Body Language" value={r.body_language_score} />
+                <StatBar label="Relevance" value={r.relevance_score} />
+              </div>
+
+              {/* Feedback */}
+              <div className="space-y-3">
+                <p className="text-xs text-on-surface-variant leading-relaxed">
+                  {r.feedback}
+                </p>
+
+                {r.strengths.length > 0 && (
+                  <div>
+                    <span className="text-[10px] font-bold text-success uppercase font-mono block mb-1">
+                      Strengths
+                    </span>
+                    <ul className="space-y-1">
+                      {r.strengths.map((s, i) => (
+                        <li key={i} className="flex gap-2 text-xs text-on-surface-variant">
+                          <span className="text-success mt-0.5">✓</span>
+                          {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {isWeak && weak && (
+                  <div className="p-3 rounded-lg bg-error/5 border border-error/15">
+                    <span className="text-[10px] font-bold text-error uppercase font-mono block mb-1">
+                      Top Improvement
+                    </span>
+                    <p className="text-xs text-on-surface-variant">{weak.top_improvement}</p>
+                  </div>
+                )}
+
+                {/* Vision metrics summary */}
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  {[
+                    { label: "Eye Contact", val: qr.vision_metrics.eye_contact_percent },
+                    { label: "Confidence", val: qr.vision_metrics.confidence },
+                    { label: "Attention", val: qr.vision_metrics.attention_percent },
+                  ].map(({ label, val }) => (
+                    <div key={label} className="text-center p-2 rounded bg-white/5">
+                      <span className="text-[9px] text-on-surface-variant font-mono block">
+                        {label}
+                      </span>
+                      <span className={`text-sm font-bold ${scoreColor(val)}`}>
+                        {Math.round(val)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Page
+// ---------------------------------------------------------------------------
+
 export function ReportPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Real data from the interview session (passed via router state)
+  const report: InterviewFinalizeResponse | undefined = location.state?.report;
+
   const [showInsight, setShowInsight] = useState(true);
   const [circleOffset, setCircleOffset] = useState(351.85);
 
+  const overallScore = report?.result.overall_score ?? 92;
+  const circumference = 2 * Math.PI * 56;
+
   useEffect(() => {
-    const circumference = 2 * Math.PI * 56;
     const timer = setTimeout(() => {
-      setCircleOffset(circumference - 0.92 * circumference);
+      setCircleOffset(circumference - (overallScore / 100) * circumference);
     }, 300);
     return () => clearTimeout(timer);
-  }, []);
+  }, [overallScore, circumference]);
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.08
+  // Aggregate vision metrics across all questions
+  const avgMetrics = report
+    ? {
+        eyeContact:
+          report.question_results.reduce(
+            (s, q) => s + q.vision_metrics.eye_contact_percent,
+            0
+          ) / report.question_results.length,
+        confidence:
+          report.question_results.reduce(
+            (s, q) => s + q.vision_metrics.confidence,
+            0
+          ) / report.question_results.length,
+        attention:
+          report.question_results.reduce(
+            (s, q) => s + q.vision_metrics.attention_percent,
+            0
+          ) / report.question_results.length,
       }
-    }
-  };
+    : { eyeContact: 88, confidence: 71, attention: 92 };
 
-  const itemVariants = {
-    hidden: { y: 20, opacity: 0 },
-    show: { y: 0, opacity: 1, transition: { type: "spring" as const, stiffness: 260, damping: 25 } }
-  };
+  const weakIndices = new Set(report?.result.weak_question_indices ?? []);
+  const weakMap = new Map(
+    report?.weak_questions.map((w) => [w.question_index, w]) ?? []
+  );
 
   return (
-    <motion.div 
+    <motion.div
       initial="hidden"
       animate="show"
       variants={containerVariants}
       className="p-6 md:p-12 max-w-[1280px] mx-auto w-full space-y-8 relative text-[#dae2fd]"
     >
-      {/* Executive Summary Header */}
-      <motion.header 
+      {/* ── Executive Summary Header ── */}
+      <motion.header
         variants={itemVariants}
         className="glass-card rounded-xl p-lg mb-xl border-l-4 border-l-primary flex flex-col md:flex-row justify-between items-center gap-xl relative overflow-hidden bg-slate-900/40 backdrop-blur-xl border border-white/10"
       >
-        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />
         <div className="flex items-center gap-6 w-full md:w-auto">
+          {/* Score ring */}
           <div className="relative flex-shrink-0">
             <svg className="w-32 h-32 -rotate-90">
-              <circle className="text-slate-800" cx="64" cy="64" fill="transparent" r="56" stroke="currentColor" strokeWidth="6"></circle>
-              <circle 
-                className="text-primary transition-all duration-[1500ms] ease-out" 
-                cx="64" 
-                cy="64" 
-                fill="transparent" 
-                id="score-circle" 
-                r="56" 
-                stroke="currentColor" 
-                strokeWidth="6" 
-                strokeDasharray="351.85" 
+              <circle
+                className="text-slate-800"
+                cx="64"
+                cy="64"
+                fill="transparent"
+                r="56"
+                stroke="currentColor"
+                strokeWidth="6"
+              />
+              <circle
+                className={`transition-all duration-[1500ms] ease-out ${
+                  overallScore >= 80
+                    ? "text-success"
+                    : overallScore >= 60
+                    ? "text-warning"
+                    : "text-error"
+                }`}
+                cx="64"
+                cy="64"
+                fill="transparent"
+                id="score-circle"
+                r="56"
+                stroke="currentColor"
+                strokeWidth="6"
+                strokeDasharray="351.85"
                 strokeDashoffset={circleOffset}
-              ></circle>
+              />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-display text-headline-lg text-on-surface">92%</span>
-              <span className="font-label-sm text-[10px] text-on-surface-variant uppercase font-mono">Match</span>
+              <span className="font-display text-headline-lg text-on-surface">
+                {overallScore}%
+              </span>
+              <span className="font-label-sm text-[10px] text-on-surface-variant uppercase font-mono">
+                Overall
+              </span>
             </div>
           </div>
+
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="bg-primary/10 text-primary px-2 py-0.5 rounded font-label-sm text-xs font-bold uppercase tracking-wider font-mono">#SH-4092</span>
-              <span className="text-on-surface-variant font-label-sm text-xs font-mono">• Completed 2 hours ago</span>
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="bg-primary/10 text-primary px-2 py-0.5 rounded font-label-sm text-xs font-bold uppercase tracking-wider font-mono">
+                SmartHire AI
+              </span>
+              {report && (
+                <span
+                  className={`px-2 py-0.5 rounded text-xs font-bold uppercase border font-mono ${recommendationBadgeColor(
+                    report.result.recommendation
+                  )}`}
+                >
+                  {report.result.recommendation}
+                </span>
+              )}
             </div>
-            <h1 className="font-headline-lg text-headline-lg text-on-surface">Alexander Chen</h1>
-            <p className="text-on-surface-variant font-body-lg text-base">Senior Software Engineer Candidate • <span className="text-success font-semibold">Strong Recommend</span></p>
+            <h1 className="font-headline-lg text-headline-lg text-on-surface">
+              {report?.candidate_name ?? "Candidate"}
+            </h1>
+            <p className="text-on-surface-variant font-body-lg text-base">
+              {report?.job_title
+                ? `${report.job_title} Candidate`
+                : "Interview Assessment"}{" "}
+              •{" "}
+              <span
+                className={`font-semibold ${
+                  overallScore >= 80
+                    ? "text-success"
+                    : overallScore >= 60
+                    ? "text-warning"
+                    : "text-error"
+                }`}
+              >
+                {report?.result.recommendation ?? "Assessment Complete"}
+              </span>
+            </p>
+            {report && (
+              <p className="text-on-surface-variant text-xs mt-1 font-mono">
+                {report.total_questions} questions • {report.weak_questions.length} need work
+              </p>
+            )}
           </div>
         </div>
+
         <div className="flex gap-4 w-full md:w-auto justify-end">
-          <motion.button 
+          <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            className="flex-1 md:flex-none px-6 py-3 rounded-lg border border-white/10 bg-slate-900/40 text-on-surface font-label-md text-xs font-semibold hover:bg-slate-800 transition-all active:scale-95 flex items-center justify-center gap-1"
+            onClick={() => navigate("/interviews")}
+            className="flex-1 md:flex-none px-6 py-3 rounded-lg border border-white/10 bg-slate-900/40 text-on-surface font-label-md text-xs font-semibold hover:bg-slate-800 transition-all flex items-center justify-center gap-1"
           >
-            <span className="material-symbols-outlined text-[18px]">download</span> Export
+            <span className="material-symbols-outlined text-[18px]">refresh</span>
+            New Interview
           </motion.button>
-          <motion.button 
+          <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            className="flex-1 md:flex-none px-6 py-3 rounded-lg bg-primary text-slate-950 font-label-md text-xs font-bold hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-primary/20"
+            className="flex-1 md:flex-none px-6 py-3 rounded-lg bg-primary text-slate-950 font-label-md text-xs font-bold hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-primary/20 flex items-center gap-1"
           >
-            Next Steps
+            <span className="material-symbols-outlined text-[18px]">download</span>
+            Export Report
           </motion.button>
         </div>
       </motion.header>
 
-      {/* Main Bento Grid */}
+      {/* ── Main Bento Grid ── */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        {/* Summary Text */}
-        <motion.section 
+
+        {/* AI Evaluation Summary */}
+        <motion.section
           variants={itemVariants}
           className="md:col-span-4 glass-card p-6 rounded-xl flex flex-col justify-between"
         >
           <div>
             <h3 className="font-label-md text-xs font-bold text-primary uppercase mb-4 tracking-widest flex items-center gap-2 font-mono">
-              <span className="material-symbols-outlined text-[18px]">auto_awesome</span> AI Evaluation
+              <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+              AI Evaluation
             </h3>
-            <p className="text-on-surface font-body-md text-sm leading-relaxed mb-6">
-              Alexander demonstrated exceptional technical depth and systems design thinking. His communication style is collaborative and precise, though he tends to speak quickly when excited about complex problems.
+            <p className="text-on-surface font-body-md text-sm leading-relaxed mb-4">
+              {report?.result.overall_feedback ??
+                "Complete an interview to see your personalised AI evaluation here."}
             </p>
+            {report && (
+              <>
+                <p className="text-on-surface-variant text-xs leading-relaxed mb-2">
+                  <strong className="text-white">Communication:</strong>{" "}
+                  {report.result.communication_summary}
+                </p>
+                <p className="text-on-surface-variant text-xs leading-relaxed">
+                  <strong className="text-white">Body Language:</strong>{" "}
+                  {report.result.body_language_summary}
+                </p>
+              </>
+            )}
           </div>
-          <div className="pt-6 border-t border-white/10 space-y-4">
-            <div className="flex justify-between items-center text-xs font-semibold font-mono">
-              <span className="text-on-surface-variant">Role Fit</span>
-              <span className="text-on-surface">Excellent</span>
+
+          {report && (
+            <div className="pt-6 border-t border-white/10 space-y-3 mt-4">
+              <div>
+                <span className="text-[10px] font-bold text-success uppercase font-mono tracking-wider block mb-2">
+                  Top Strengths
+                </span>
+                {report.result.top_strengths.map((s, i) => (
+                  <div key={i} className="flex gap-2 text-xs text-on-surface-variant mb-1">
+                    <span className="text-success">✓</span> {s}
+                  </div>
+                ))}
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-warning uppercase font-mono tracking-wider block mb-2">
+                  Top Improvements
+                </span>
+                {report.result.top_improvements.map((imp, i) => (
+                  <div key={i} className="flex gap-2 text-xs text-on-surface-variant mb-1">
+                    <span className="text-warning">→</span> {imp}
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="flex justify-between items-center text-xs font-semibold font-mono">
-              <span className="text-on-surface-variant">Salary Alignment</span>
-              <span className="text-on-surface">Within Range</span>
-            </div>
-          </div>
+          )}
         </motion.section>
 
-        {/* Video Recording & Metrics */}
-        <motion.section 
+        {/* Vision Metrics Panel */}
+        <motion.section
           variants={itemVariants}
           className="md:col-span-8 glass-card rounded-xl overflow-hidden flex flex-col bg-slate-900/40 border border-white/10"
         >
-          <div className="relative h-64 bg-slate-900 overflow-hidden group">
-            <img 
-              className="w-full h-full object-cover opacity-80" 
-              alt="Video interview recording with AI overlays" 
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuBK3vi8BJoDztW6xwrIPZ2eyFbLO5yw4CbJcnphLDYLw-1-VTKAfY4dOSfzGsZavbc93OH2U5tPsshvBgxoAWewwqhu-lHZwP1ZStdeUTRFVT5zGyDePdOYr29zvgMR-lusKd0UUUAQcPonLmr5o2K6IS5_R_eP2pcsariiTh5pXmK5uy3iiyKuNWt3bHRix8EZq1VdgYKGqAoH7Vui4xc-5QgYtHyLTNgjX_XOD4GnAKf91jWyPrh6-Q"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-transparent"></div>
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 cursor-pointer hover:scale-110 transition-transform">
-                <span className="material-symbols-outlined text-white text-4xl">play_arrow</span>
-              </div>
-            </div>
-            <div className="absolute bottom-4 left-4 right-4">
-              <div className="flex justify-between items-center mb-2">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-success"></div>
-                    <span className="text-[9px] font-bold text-white uppercase font-mono tracking-tighter">Engagement</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-primary"></div>
-                    <span className="text-[9px] font-bold text-white uppercase font-mono tracking-tighter">Technical</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-warning"></div>
-                    <span className="text-[9px] font-bold text-white uppercase font-mono tracking-tighter">Correction</span>
-                  </div>
-                </div>
-                <span className="text-xs font-semibold text-primary font-mono">08:42 / 45:00</span>
-              </div>
-              <div className="h-1.5 bg-white/10 rounded-full w-full relative">
-                <div className="absolute top-0 left-0 h-full bg-primary/40 rounded-full w-full"></div>
-                <div className="absolute top-0 left-0 h-full bg-primary rounded-full w-[20%]"></div>
-                {/* Markers */}
-                <div className="absolute top-1/2 -translate-y-1/2 left-[15%] w-2 h-2 bg-success rounded-full ring-4 ring-success/20 cursor-pointer"></div>
-                <div className="absolute top-1/2 -translate-y-1/2 left-[45%] w-2 h-2 bg-warning rounded-full ring-4 ring-warning/20 cursor-pointer"></div>
-                <div className="absolute top-1/2 -translate-y-1/2 left-[75%] w-2 h-2 bg-primary rounded-full ring-4 ring-primary/20 cursor-pointer"></div>
-              </div>
-            </div>
+          <div className="p-6 border-b border-white/5">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-[20px]">
+                visibility
+              </span>
+              Body Language & Vision Analysis
+            </h3>
+            <p className="text-xs text-on-surface-variant mt-1">
+              Averaged across all questions via real-time MediaPipe analysis
+            </p>
           </div>
-          <div className="p-6 grid grid-cols-3 gap-6 flex-grow border-t border-white/5 bg-slate-900/20">
-            <div className="flex flex-col gap-2">
-              <span className="text-[10px] font-bold text-on-surface-variant uppercase font-mono tracking-wider">Eye Contact</span>
-              <span className="text-2xl font-bold text-on-surface">88%</span>
-              <div className="h-1 bg-white/5 rounded-full"><div className="h-full bg-success w-[88%] rounded-full"></div></div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <span className="text-[10px] font-bold text-on-surface-variant uppercase font-mono tracking-wider">Sentiment</span>
-              <span className="text-2xl font-bold text-on-surface">Positive</span>
-              <div className="h-1 bg-white/5 rounded-full"><div className="h-full bg-primary w-[75%] rounded-full"></div></div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <span className="text-[10px] font-bold text-on-surface-variant uppercase font-mono tracking-wider">Speech Pace</span>
-              <span className="text-2xl font-bold text-on-surface">142 WPM</span>
-              <div className="h-1 bg-white/5 rounded-full"><div className="h-full bg-warning w-[60%] rounded-full"></div></div>
-            </div>
-          </div>
-        </motion.section>
 
-        {/* Premium Communication Analysis */}
-        <motion.section 
-          variants={itemVariants}
-          className="md:col-span-6 glass-card p-6 rounded-xl flex flex-col justify-between"
-        >
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold text-white tracking-tight">Communication Analysis</h3>
-            <span className="material-symbols-outlined text-primary/60">waves</span>
-          </div>
-          <div className="space-y-6 flex-grow">
-            <div>
-              <div className="flex justify-between items-baseline mb-2">
-                <span className="text-xs font-semibold font-mono text-on-surface-variant">Emotion Consistency</span>
-                <span className="text-[10px] font-bold text-success font-mono flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span> Stable Baseline
+          <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-6 flex-grow bg-slate-900/20">
+            {[
+              { label: "Eye Contact", val: avgMetrics.eyeContact, icon: "visibility" },
+              { label: "Confidence", val: avgMetrics.confidence, icon: "psychology" },
+              { label: "Attention", val: avgMetrics.attention, icon: "center_focus_strong" },
+              {
+                label: "Face Presence",
+                val: report
+                  ? report.question_results.reduce(
+                      (s, q) => s + q.vision_metrics.face_presence_percent,
+                      0
+                    ) / report.question_results.length
+                  : 99,
+                icon: "face",
+              },
+            ].map(({ label, val, icon }) => (
+              <div key={label} className="flex flex-col gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-primary/60 text-[16px]">
+                    {icon}
+                  </span>
+                  <span className="text-[10px] font-bold text-on-surface-variant uppercase font-mono tracking-wider">
+                    {label}
+                  </span>
+                </div>
+                <span className={`text-2xl font-bold ${scoreColor(val)}`}>
+                  {Math.round(val)}%
                 </span>
-              </div>
-              <div className="flex items-end h-16 gap-[2px] border-b border-white/5 pb-2">
-                <div className="flex-1 bg-primary/20 rounded-t-sm h-[30%] transition-all hover:bg-primary/45"></div>
-                <div className="flex-1 bg-primary/30 rounded-t-sm h-[45%] transition-all hover:bg-primary/55"></div>
-                <div className="flex-1 bg-primary/40 rounded-t-sm h-[60%] transition-all hover:bg-primary/65"></div>
-                <div className="flex-1 bg-primary/30 rounded-t-sm h-[50%] transition-all hover:bg-primary/55"></div>
-                <div className="flex-1 bg-primary/50 rounded-t-sm h-[75%] transition-all hover:bg-primary/75"></div>
-                <div className="flex-1 bg-primary/60 rounded-t-sm h-[85%] transition-all hover:bg-primary/85"></div>
-                <div className="flex-1 bg-primary/40 rounded-t-sm h-[65%] transition-all hover:bg-primary/65"></div>
-                <div className="flex-1 bg-primary/50 rounded-t-sm h-[80%] transition-all hover:bg-primary/75"></div>
-                <div className="flex-1 bg-primary/70 rounded-t-sm h-[95%] transition-all hover:bg-primary/95"></div>
-                <div className="flex-1 bg-primary/50 rounded-t-sm h-[70%] transition-all hover:bg-primary/75"></div>
-                <div className="flex-1 bg-primary/40 rounded-t-sm h-[60%] transition-all hover:bg-primary/65"></div>
-                <div className="flex-1 bg-primary/30 rounded-t-sm h-[40%] transition-all hover:bg-primary/55"></div>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 rounded-lg bg-white/5 border border-white/10">
-                <span className="text-[10px] font-bold text-on-surface-variant uppercase font-mono block mb-1">Clarity Score</span>
-                <div className="flex items-baseline gap-0.5">
-                  <span className="text-xl font-bold text-on-surface">9.4</span>
-                  <span className="text-[10px] font-bold text-on-surface-variant font-mono">/10</span>
+                <div className="h-1 bg-white/5 rounded-full">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${val}%` }}
+                    transition={{ duration: 1.2, ease: "easeOut", delay: 0.4 }}
+                    className={`h-full rounded-full ${
+                      val >= 80 ? "bg-success" : val >= 60 ? "bg-warning" : "bg-error"
+                    }`}
+                  />
                 </div>
               </div>
-              <div className="p-3 rounded-lg bg-white/5 border border-white/10">
-                <span className="text-[10px] font-bold text-on-surface-variant uppercase font-mono block mb-1">Confidence</span>
-                <div className="flex items-baseline">
-                  <span className="text-xl font-bold text-on-surface">High</span>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
         </motion.section>
 
-        {/* Skill Radar Chart */}
-        <motion.section 
-          variants={itemVariants}
-          className="md:col-span-6 glass-card p-6 rounded-xl flex flex-col justify-between"
-        >
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold text-white tracking-tight">Skill Distribution</h3>
-            <span className="material-symbols-outlined text-tertiary">radar</span>
-          </div>
-          <div className="flex justify-center items-center h-48 relative">
-            <div className="absolute inset-0 flex items-center justify-center opacity-10">
-              <div className="w-40 h-40 border border-on-surface-variant rounded-full"></div>
-              <div className="absolute w-28 h-28 border border-on-surface-variant rounded-full"></div>
-              <div className="absolute w-16 h-16 border border-on-surface-variant rounded-full"></div>
+        {/* Weak Questions — highlighted */}
+        {report && report.weak_questions.length > 0 && (
+          <motion.section
+            variants={itemVariants}
+            className="md:col-span-12 glass-card p-6 rounded-xl border border-error/20 bg-error/5"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <span className="material-symbols-outlined text-error text-[20px]">
+                warning
+              </span>
+              <h3 className="text-base font-bold text-white">
+                Questions Needing Improvement ({report.weak_questions.length})
+              </h3>
+              <span className="ml-auto text-xs text-on-surface-variant font-mono">
+                Score below 60
+              </span>
             </div>
-            <div className="w-32 h-32 bg-primary/20 border-2 border-primary skill-radar relative z-10"></div>
-            <div className="absolute top-0 text-center font-label-sm text-[10px] text-on-surface-variant uppercase font-mono tracking-wider">Technical</div>
-            <div className="absolute bottom-0 text-center font-label-sm text-[10px] text-on-surface-variant uppercase font-mono tracking-wider">Soft Skills</div>
-            <div className="absolute left-2 text-center font-label-sm text-[10px] text-on-surface-variant uppercase font-mono tracking-wider">Leadership</div>
-            <div className="absolute right-2 text-center font-label-sm text-[10px] text-on-surface-variant uppercase font-mono tracking-wider">Creativity</div>
-          </div>
-          <div className="mt-4 flex justify-center gap-6">
-            <span className="flex items-center gap-1.5 font-label-sm text-xs text-on-surface-variant font-mono">
-              <div className="w-2.5 h-2.5 rounded-full bg-primary"></div> Alexander
-            </span>
-            <span className="flex items-center gap-1.5 font-label-sm text-xs text-on-surface-variant font-mono">
-              <div className="w-2.5 h-2.5 rounded-full bg-white/20"></div> Benchmark
-            </span>
-          </div>
-        </motion.section>
-
-        {/* Peer Benchmark Comparison */}
-        <motion.section 
-          variants={itemVariants}
-          className="md:col-span-12 glass-card p-8 rounded-xl relative overflow-hidden bg-slate-900/40 border border-white/10"
-        >
-          <div className="flex flex-col md:flex-row items-center gap-6 relative z-10">
-            <div className="flex-grow w-full">
-              <div className="flex justify-between items-end mb-4">
-                <div>
-                  <h4 className="text-lg font-bold text-white tracking-tight">Peer Benchmark Comparison</h4>
-                  <p className="text-on-surface-variant text-sm">Candidate vs. Recently Evaluated Senior Engineers</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {report.weak_questions.map((wq) => (
+                <div
+                  key={wq.question_index}
+                  className="p-4 rounded-xl bg-error/5 border border-error/15"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-bold text-on-surface-variant font-mono">
+                      Q{wq.question_index + 1}
+                    </span>
+                    <span className="text-error font-bold font-mono text-sm">
+                      {wq.overall_score}/100
+                    </span>
+                  </div>
+                  <p className="text-sm text-white font-medium mb-2 leading-snug">
+                    {wq.question_text}
+                  </p>
+                  <p className="text-xs text-on-surface-variant mb-2 leading-relaxed">
+                    {wq.primary_feedback}
+                  </p>
+                  <div className="p-2 rounded bg-error/10 border border-error/20">
+                    <span className="text-[10px] font-bold text-error font-mono block mb-0.5">
+                      ACTION ITEM
+                    </span>
+                    <p className="text-xs text-on-surface-variant">{wq.top_improvement}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="font-display text-4xl font-black text-primary">88<span className="text-xl">th</span></span>
-                  <span className="text-[10px] font-bold text-on-surface-variant uppercase font-mono block">Percentile</span>
-                </div>
-              </div>
-              {/* Percentile Slider */}
-              <div className="relative h-12 bg-white/5 rounded-xl border border-white/10 flex items-center px-4 overflow-hidden">
-                <div className="absolute top-0 left-0 h-full bg-primary/10 w-[88%] border-r border-primary/50"></div>
-                <div className="w-full h-2 bg-white/10 rounded-full relative overflow-hidden">
-                  <div className="absolute top-0 left-0 h-full bg-primary rounded-full w-[88%] shadow-[0_0_10px_rgba(195,192,255,0.5)]"></div>
-                </div>
-                {/* Cursor */}
-                <div className="absolute top-1/2 -translate-y-1/2 left-[88%] -translate-x-1/2">
-                  <div className="w-6 h-6 rounded-full bg-primary border-4 border-background flex items-center justify-center shadow-lg"></div>
-                </div>
-              </div>
-              <p className="mt-4 text-xs text-on-surface-variant leading-relaxed">
-                Alexander scored higher than <strong className="text-primary">88% of candidates</strong>. Top performing areas include <span className="text-white">Architectural Design</span> and <span className="text-white">Rapid Prototyping</span>.
-              </p>
+              ))}
             </div>
-            <motion.button 
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="flex-shrink-0 px-6 py-3 rounded-lg border border-primary/30 text-primary text-xs font-semibold hover:bg-primary/10 transition-all whitespace-nowrap active:scale-95"
-            >
-              View Ranking Details
-            </motion.button>
-          </div>
-        </motion.section>
+          </motion.section>
+        )}
 
-        {/* Technical Breakdown */}
+        {/* Per-Question Breakdown */}
         <motion.section variants={itemVariants} className="md:col-span-12 space-y-4">
           <div className="flex items-center justify-between px-2">
-            <h3 className="text-lg font-bold text-white tracking-tight">Technical Accuracy</h3>
-            <span className="text-xs text-on-surface-variant font-mono">3 Questions Evaluated</span>
+            <h3 className="text-lg font-bold text-white tracking-tight">
+              Question-by-Question Analysis
+            </h3>
+            <span className="text-xs text-on-surface-variant font-mono">
+              {report?.total_questions ?? 0} Questions Evaluated
+            </span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="glass-card p-6 rounded-xl border-l-4 border-l-success bg-gradient-to-r from-success/5 to-transparent">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-semibold text-on-surface-variant font-mono">Q1: System Scalability</span>
-                <span className="text-success font-bold font-mono text-sm">100%</span>
-              </div>
-              <p className="text-sm text-white">Perfect explanation of horizontal scaling and eventual consistency.</p>
+
+          {report ? (
+            <div className="space-y-4">
+              {report.question_results.map((qr) => (
+                <QuestionCard
+                  key={qr.question_index}
+                  qr={qr}
+                  isWeak={weakIndices.has(qr.question_index)}
+                  weak={weakMap.get(qr.question_index)}
+                />
+              ))}
             </div>
-            <div className="glass-card p-6 rounded-xl border-l-4 border-l-success bg-gradient-to-r from-success/5 to-transparent">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-semibold text-on-surface-variant font-mono">Q2: Distributed Locking</span>
-                <span className="text-success font-bold font-mono text-sm">95%</span>
-              </div>
-              <p className="text-sm text-white">Thorough understanding of Redis Redlock and edge cases.</p>
+          ) : (
+            /* Fallback placeholder when no real data */
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[
+                { q: "Q1: System Scalability", score: 100, color: "border-l-success", gradient: "from-success/5" },
+                { q: "Q2: Distributed Locking", score: 95, color: "border-l-success", gradient: "from-success/5" },
+                { q: "Q3: Concurrency in Go", score: 78, color: "border-l-warning", gradient: "from-warning/5" },
+              ].map(({ q, score, color, gradient }) => (
+                <div
+                  key={q}
+                  className={`glass-card p-6 rounded-xl border-l-4 bg-gradient-to-r to-transparent ${color} ${gradient}`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-semibold text-on-surface-variant font-mono">{q}</span>
+                    <span className={`font-bold font-mono text-sm ${scoreColor(score)}`}>{score}%</span>
+                  </div>
+                  <p className="text-sm text-white">Complete an interview to see real analysis.</p>
+                </div>
+              ))}
             </div>
-            <div className="glass-card p-6 rounded-xl border-l-4 border-l-warning bg-gradient-to-r from-warning/5 to-transparent">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-semibold text-on-surface-variant font-mono">Q3: Concurrency in Go</span>
-                <span className="text-warning font-bold font-mono text-sm">78%</span>
-              </div>
-              <p className="text-sm text-white">Good grasp of channels, but missed some nuance on race conditions.</p>
-            </div>
-          </div>
+          )}
         </motion.section>
       </div>
 
-      {/* Footer CTA Section */}
-      <motion.footer 
+      {/* ── Footer ── */}
+      <motion.footer
         variants={itemVariants}
         className="mt-12 py-12 border-t border-white/10 flex flex-col items-center gap-6"
       >
         <div className="text-center">
-          <h4 className="text-lg font-bold text-white mb-1">Next Steps for Alexander Chen</h4>
-          <p className="text-on-surface-variant text-sm">Proceed to the Executive Interview round based on AI recommendation.</p>
+          <h4 className="text-lg font-bold text-white mb-1">
+            Next Steps for {report?.candidate_name ?? "You"}
+          </h4>
+          <p className="text-on-surface-variant text-sm">
+            {report
+              ? report.result.recommendation === "Strong Recommend" || report.result.recommendation === "Recommend"
+                ? "Proceed to the next round based on AI recommendation."
+                : "Review the improvement areas before your next interview."
+              : "Complete an interview to unlock personalised next steps."}
+          </p>
         </div>
         <div className="flex flex-wrap justify-center gap-4">
-          <motion.button 
+          <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            className="px-6 py-3 rounded-xl bg-slate-800 border border-white/10 text-white text-xs font-bold hover:bg-slate-700 transition-all flex items-center gap-1.5 active:scale-95"
+            onClick={() => navigate("/interviews")}
+            className="px-6 py-3 rounded-xl bg-slate-800 border border-white/10 text-white text-xs font-bold hover:bg-slate-700 transition-all flex items-center gap-1.5"
           >
-            <span className="material-symbols-outlined">calendar_today</span> Schedule Executive Round
+            <span className="material-symbols-outlined">replay</span>
+            Retake Interview
           </motion.button>
-          <motion.button 
+          <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="px-6 py-3 rounded-xl bg-primary text-slate-950 text-xs font-bold hover:opacity-90 transition-all shadow-[0_0_30px_rgba(195,192,255,0.3)] flex items-center gap-1.5 shimmer-effect relative overflow-hidden"
+            className="px-6 py-3 rounded-xl bg-primary text-slate-950 text-xs font-bold hover:opacity-90 transition-all shadow-[0_0_30px_rgba(195,192,255,0.3)] flex items-center gap-1.5 relative overflow-hidden shimmer-effect"
           >
-            <span className="material-symbols-outlined">verified</span> Generate Offer Preview
-          </motion.button>
-          <motion.button 
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="px-6 py-3 rounded-xl bg-slate-800 border border-white/10 text-on-surface-variant text-xs font-bold hover:text-white transition-all flex items-center gap-1.5 active:scale-95"
-          >
-            <span className="material-symbols-outlined">share</span> Share with Team
+            <span className="material-symbols-outlined">verified</span>
+            Share Report
           </motion.button>
         </div>
       </motion.footer>
 
-      {/* Floating AI Insight Card */}
+      {/* ── Floating AI Insight ── */}
       <AnimatePresence>
-        {showInsight && (
-          <motion.div 
+        {showInsight && report && (
+          <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -386,16 +646,22 @@ export function ReportPage() {
                 <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
                   <span className="material-symbols-outlined text-primary text-xl">smart_toy</span>
                 </div>
-                <span className="text-xs font-bold text-primary font-mono tracking-wider uppercase">AI Context</span>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setShowInsight(false); }} 
+                <span className="text-xs font-bold text-primary font-mono tracking-wider uppercase">
+                  AI Insight
+                </span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowInsight(false); }}
                   className="ml-auto text-on-surface-variant hover:text-white"
                 >
                   <span className="material-symbols-outlined text-sm">close</span>
                 </button>
               </div>
               <p className="text-xs text-white leading-relaxed">
-                Alexander has 94% similarity to your current top performer, Sarah J. (L6 Staff Engineer).
+                {report.weak_questions.length === 0
+                  ? "Excellent performance across all questions! 🎉"
+                  : `Focus on Question${report.weak_questions.length > 1 ? "s" : ""} ${report.weak_questions
+                      .map((w) => w.question_index + 1)
+                      .join(", ")} before your next interview.`}
               </p>
             </div>
           </motion.div>

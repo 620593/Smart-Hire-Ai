@@ -1,331 +1,621 @@
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { useAuth } from "@/hooks/useAuth";
-import { AdminService } from "@/services/auth";
-import { Badge } from "@/components/ui/Badge";
+/**
+ * AdminDashboardPage — Full-control admin panel for SmartHire AI.
+ *
+ * Tabs:
+ *  1. Overview      — live platform stats + quick-action cards
+ *  2. Recruiters    — list all, approve / reject / delete inline
+ *  3. Users         — all platform users, activate / deactivate
+ *  4. System Health — live DB / Gemini / Groq status probes
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  AdminService,
+  type PlatformStats,
+  type SystemHealth,
+} from "@/services/auth";
 import type { User } from "@/types/auth";
 
+// ---------------------------------------------------------------------------
+// Animation helpers
+// ---------------------------------------------------------------------------
+const fade = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.25 } } };
+
+// ---------------------------------------------------------------------------
+// Tiny UI atoms
+// ---------------------------------------------------------------------------
+
+function Badge({ label, variant }: { label: string; variant: "success" | "warning" | "error" | "neutral" }) {
+  const cls = {
+    success: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    warning: "bg-amber-500/10  text-amber-400  border-amber-500/20",
+    error:   "bg-red-500/10    text-red-400    border-red-500/20",
+    neutral: "bg-white/5       text-slate-400  border-white/10",
+  }[variant];
+  return (
+    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded border font-mono ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
+function Spinner() {
+  return (
+    <div className="w-5 h-5 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+  );
+}
+
 function StatCard({
-  icon, label, value, sub, color, delay = 0
-}: { icon: string; label: string; value: string; sub: string; color: string; delay?: number }) {
+  icon, label, value, sub, color,
+}: {
+  icon: string; label: string; value: string | number; sub: string; color: string;
+}) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, type: "spring", stiffness: 260, damping: 25 }}
-      className="bg-[#131c30] border border-white/8 rounded-2xl p-5 flex flex-col gap-3"
+      variants={fade}
+      className="glass-card p-5 rounded-xl flex items-center gap-4 border border-white/5"
     >
-      <div className="flex items-center justify-between">
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${color}`}>
-          <span className="material-symbols-outlined text-[18px] text-white">{icon}</span>
-        </div>
-        <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full ${sub.startsWith("+") ? "bg-emerald-500/15 text-emerald-400" : sub === "HEALTHY" ? "bg-emerald-500/15 text-emerald-400" : "bg-[#5b5cf6]/15 text-[#5b5cf6]"}`}>
-          {sub}
-        </span>
+      <div className={`w-11 h-11 rounded-xl ${color} flex items-center justify-center shrink-0`}>
+        <span className="material-symbols-outlined text-white text-xl">{icon}</span>
       </div>
       <div>
-        <p className="text-2xl font-bold text-white">{value}</p>
-        <p className="text-xs text-[#8b9ec7] mt-0.5">{label}</p>
+        <p className="text-2xl font-bold text-white font-mono">{value}</p>
+        <p className="text-xs text-on-surface-variant">{label}</p>
+        <p className="text-[10px] text-on-surface-variant/60 mt-0.5">{sub}</p>
       </div>
     </motion.div>
   );
 }
 
-const cardVariants = {
-  hidden: { y: 20, opacity: 0 },
-  show: { y: 0, opacity: 1, transition: { type: "spring" as const, stiffness: 260, damping: 25 } },
-};
+// ---------------------------------------------------------------------------
+// Tab: Overview
+// ---------------------------------------------------------------------------
 
-export function AdminDashboardPage() {
-  const { user } = useAuth();
-  const displayName = user?.first_name || user?.username || "Admin";
+function OverviewTab({ stats, loading }: { stats: PlatformStats | null; loading: boolean }) {
+  return (
+    <motion.div initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.07 } } }}>
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+        <StatCard icon="group"            label="Total Users"         value={loading ? "…" : stats?.total_users ?? 0}          sub="All roles"                  color="bg-primary/70" />
+        <StatCard icon="badge"            label="Recruiters"          value={loading ? "…" : stats?.total_recruiters ?? 0}      sub="All statuses"               color="bg-violet-600/70" />
+        <StatCard icon="person"           label="Candidates"          value={loading ? "…" : stats?.total_candidates ?? 0}      sub="Registered"                 color="bg-sky-600/70" />
+        <StatCard icon="pending"          label="Pending Approval"    value={loading ? "…" : stats?.pending_recruiters ?? 0}    sub="Need review"                color="bg-amber-500/70" />
+        <StatCard icon="check_circle"     label="Active Recruiters"   value={loading ? "…" : stats?.active_recruiters ?? 0}    sub="Approved & active"          color="bg-emerald-600/70" />
+        <StatCard icon="block"            label="Suspended"           value={loading ? "…" : stats?.suspended_recruiters ?? 0} sub="Deactivated accounts"       color="bg-red-600/70" />
+      </div>
 
-  const [pendingRecruiters, setPendingRecruiters] = useState<User[]>([]);
-  const [loadingApproval, setLoadingApproval] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
+      {/* Quick-action tiles */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { icon: "how_to_reg",  title: "Recruiter Approvals",   body: "Review and approve new recruiter accounts waiting for access.",              tab: 1, cta: "Review Now",   color: "border-amber-500/30  bg-amber-500/5"  },
+          { icon: "manage_accounts", title: "User Management",   body: "View, activate, or deactivate any user account on the platform.",            tab: 2, cta: "Manage Users", color: "border-primary/30    bg-primary/5"    },
+          { icon: "monitor_heart", title: "System Health",       body: "Live status of PostgreSQL, Gemini 2.5 Flash, and Groq llama-3.3-70b.",       tab: 3, cta: "Check Health", color: "border-emerald-500/30 bg-emerald-500/5" },
+        ].map(({ icon, title, body, cta, color }) => (
+          <motion.div
+            key={title}
+            variants={fade}
+            className={`glass-card p-6 rounded-xl border ${color} flex flex-col gap-3`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-xl">{icon}</span>
+              <span className="font-bold text-white text-sm">{title}</span>
+            </div>
+            <p className="text-xs text-on-surface-variant leading-relaxed flex-1">{body}</p>
+            <span className="text-xs font-bold text-primary font-mono">{cta} →</span>
+          </motion.div>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
 
-  useEffect(() => {
-    AdminService.listPendingRecruiters()
-      .then(setPendingRecruiters)
-      .catch(() => setPendingRecruiters([]));
+// ---------------------------------------------------------------------------
+// Tab: Recruiters
+// ---------------------------------------------------------------------------
+
+function RecruitersTab() {
+  const [recruiters, setRecruiters] = useState<User[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [filter, setFilter]       = useState<"all" | "pending" | "active" | "suspended">("all");
+  const [search, setSearch]       = useState("");
+  const [acting, setActing]       = useState<string | null>(null);
+  const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
+
+  const showToast = (msg: string, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setRecruiters(await AdminService.listAllRecruiters()); }
+    catch { showToast("Failed to load recruiters", false); }
+    finally { setLoading(false); }
   }, []);
 
-  const handleApprove = async (userId: string, name: string) => {
-    setLoadingApproval(userId);
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = recruiters.filter((r) => {
+    const matchesSearch =
+      search === "" ||
+      `${r.first_name} ${r.last_name} ${r.email} ${r.company_name ?? ""}`.toLowerCase().includes(search.toLowerCase());
+    const matchesFilter =
+      filter === "all" ||
+      (filter === "pending"   && !r.is_approved) ||
+      (filter === "active"    && r.is_approved && r.is_active) ||
+      (filter === "suspended" && !r.is_active);
+    return matchesSearch && matchesFilter;
+  });
+
+  const act = async (id: string, action: "approve" | "reject" | "delete") => {
+    setActing(id + action);
     try {
-      await AdminService.approveRecruiter(userId);
-      setPendingRecruiters((prev) => prev.filter((r) => r.id !== userId));
-      setActionMessage(`✓ ${name} has been approved.`);
-      setTimeout(() => setActionMessage(null), 3000);
-    } catch {
-      setActionMessage("Failed to approve recruiter.");
-    } finally {
-      setLoadingApproval(null);
-    }
+      if (action === "approve") { await AdminService.approveRecruiter(id); showToast("Recruiter approved"); }
+      if (action === "reject")  { await AdminService.rejectRecruiter(id);  showToast("Recruiter suspended"); }
+      if (action === "delete")  { await AdminService.deleteRecruiter(id);  showToast("Recruiter deleted"); }
+      await load();
+    } catch { showToast("Action failed", false); }
+    finally { setActing(null); }
   };
 
-  const handleReject = async (userId: string, name: string) => {
-    setLoadingApproval(userId);
-    try {
-      await AdminService.rejectRecruiter(userId);
-      setPendingRecruiters((prev) => prev.filter((r) => r.id !== userId));
-      setActionMessage(`✗ ${name} has been rejected.`);
-      setTimeout(() => setActionMessage(null), 3000);
-    } catch {
-      setActionMessage("Failed to reject recruiter.");
-    } finally {
-      setLoadingApproval(null);
-    }
+  const statusBadge = (r: User) => {
+    if (!r.is_approved && !r.is_active) return <Badge label="Pending"   variant="warning" />;
+    if (r.is_approved  &&  r.is_active) return <Badge label="Active"    variant="success" />;
+    return                                     <Badge label="Suspended" variant="error"   />;
   };
-
-  const auditLogs = [
-    { user: "Marcus Chen", action: "Approved candidate Sarah K.", time: "2 min ago", type: "approve" },
-    { user: "System", action: "AI model updated to v2.4", time: "14 min ago", type: "system" },
-    { user: "Admin", action: "New recruiter account created", time: "1 hr ago", type: "user" },
-    { user: "Lisa Park", action: "Exported candidate report PDF", time: "2 hr ago", type: "export" },
-    { user: "System", action: "Nightly DB backup completed", time: "6 hr ago", type: "system" },
-  ];
-
-  const aiUsage = [
-    { label: "Interview Analysis", pct: 72, color: "bg-[#5b5cf6]" },
-    { label: "Resume Parsing", pct: 55, color: "bg-purple-500" },
-    { label: "Feedback Gen", pct: 83, color: "bg-emerald-500" },
-    { label: "Skill Matching", pct: 41, color: "bg-amber-500" },
-  ];
-
-  const latency = [45, 62, 38, 71, 55, 88, 42, 66, 50, 74, 48, 60];
 
   return (
-    <motion.div
-      initial="hidden"
-      animate="show"
-      variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.07 } } }}
-      className="p-6 md:p-10 max-w-[1400px] mx-auto w-full space-y-6 text-[#dae2fd]"
-    >
-      {/* Header */}
-      <motion.div variants={cardVariants} className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <p className="text-[#5b5cf6] text-[10px] font-bold uppercase tracking-widest font-mono mb-1">Admin Console</p>
-          <h1 className="text-2xl md:text-3xl font-black text-white">Welcome back, {displayName}</h1>
-          <p className="text-sm text-[#8b9ec7] mt-1">System is operational. All services running normally.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="px-4 py-2.5 bg-[#131c30] border border-white/10 rounded-xl text-sm font-semibold text-[#dae2fd] flex items-center gap-2 hover:border-white/20 transition-colors"
-          >
-            <span className="material-symbols-outlined text-[18px]">download</span>
-            Export Report
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="px-4 py-2.5 bg-[#5b5cf6] rounded-xl text-sm font-semibold text-white flex items-center gap-2 shadow-lg shadow-[#5b5cf6]/20"
-          >
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            New Interview
-          </motion.button>
-        </div>
-      </motion.div>
-
+    <div className="space-y-4">
       {/* Toast */}
-      {actionMessage && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0 }}
-          className={`px-4 py-3 rounded-xl text-sm font-medium border ${
-            actionMessage.startsWith("✓")
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-              : "bg-red-500/10 border-red-500/20 text-red-400"
-          }`}
-        >
-          {actionMessage}
-        </motion.div>
-      )}
-
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon="group" label="Total Users" value="12,482" sub="+14%" color="bg-[#5b5cf6]" delay={0.05} />
-        <StatCard icon="videocam" label="Active Interviews" value="482" sub="Live now" color="bg-purple-600" delay={0.1} />
-        <StatCard icon="payments" label="Monthly Revenue" value="$84,200" sub="+8%" color="bg-emerald-600" delay={0.15} />
-        <StatCard icon="check_circle" label="System Status" value="99.98%" sub="HEALTHY" color="bg-teal-600" delay={0.2} />
-      </div>
-
-      {/* Pending Recruiter Approvals — prominent section */}
-      <motion.div
-        variants={cardVariants}
-        className="bg-[#131c30] border border-amber-500/20 rounded-2xl overflow-hidden"
-      >
-        <div className="p-5 border-b border-white/5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-amber-500/15 rounded-lg flex items-center justify-center">
-              <span className="material-symbols-outlined text-amber-400 text-[18px]">pending_actions</span>
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white">Recruiter Approval Queue</h2>
-              <p className="text-xs text-[#8b9ec7]">Review and approve recruiter account requests</p>
-            </div>
-          </div>
-          {pendingRecruiters.length > 0 && (
-            <span className="bg-amber-500/15 text-amber-400 border border-amber-500/20 text-[10px] font-bold font-mono px-2.5 py-1 rounded-full">
-              {pendingRecruiters.length} Pending
-            </span>
-          )}
-        </div>
-
-        {pendingRecruiters.length === 0 ? (
-          <div className="p-10 text-center">
-            <span className="material-symbols-outlined text-[#5b6fa8] text-4xl block mb-3">task_alt</span>
-            <p className="text-[#8b9ec7] text-sm">No pending recruiter approvals.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-white/5">
-            {pendingRecruiters.map((recruiter) => (
-              <motion.div
-                key={recruiter.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="p-5 flex flex-col sm:flex-row sm:items-center gap-4"
-              >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-10 h-10 rounded-full bg-[#5b5cf6]/20 flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-[#5b5cf6] text-[18px]">person</span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">
-                      {recruiter.first_name} {recruiter.last_name}
-                    </p>
-                    <p className="text-xs text-[#8b9ec7] truncate">{recruiter.email}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="material-symbols-outlined text-[#5b6fa8] text-[16px]">apartment</span>
-                  <span className="text-sm text-[#8b9ec7] truncate">{recruiter.company_name || "—"}</span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Badge variant="warning">Pending</Badge>
-                  <motion.button
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
-                    disabled={loadingApproval === recruiter.id}
-                    onClick={() => handleApprove(recruiter.id, `${recruiter.first_name} ${recruiter.last_name}`)}
-                    className="px-3.5 py-1.5 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-400 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
-                  >
-                    {loadingApproval === recruiter.id ? "…" : "Approve"}
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
-                    disabled={loadingApproval === recruiter.id}
-                    onClick={() => handleReject(recruiter.id, `${recruiter.first_name} ${recruiter.last_name}`)}
-                    className="px-3.5 py-1.5 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
-                  >
-                    Reject
-                  </motion.button>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+      <AnimatePresence>
+        {toast && (
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-xl text-sm font-semibold shadow-xl border ${toast.ok ? "bg-emerald-900/80 border-emerald-500/30 text-emerald-300" : "bg-red-900/80 border-red-500/30 text-red-300"}`}>
+            {toast.msg}
+          </motion.div>
         )}
-      </motion.div>
+      </AnimatePresence>
 
-      {/* AI Usage + API Latency Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        <motion.div variants={cardVariants} className="lg:col-span-5 bg-[#131c30] border border-white/8 rounded-2xl p-5">
-          <h3 className="text-sm font-bold text-white mb-1">AI Usage & Resource Monitoring</h3>
-          <p className="text-xs text-[#8b9ec7] mb-5">Token consumption across AI modules</p>
-          <div className="space-y-4">
-            {aiUsage.map((item, i) => (
-              <div key={i}>
-                <div className="flex justify-between text-xs mb-1.5">
-                  <span className="text-[#dae2fd] font-medium">{item.label}</span>
-                  <span className="text-[#8b9ec7] font-mono">{item.pct}%</span>
-                </div>
-                <div className="h-2 bg-[#0f1829] rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${item.pct}%` }}
-                    transition={{ duration: 1, delay: i * 0.1 }}
-                    className={`h-full ${item.color} rounded-full`}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-
-        <motion.div variants={cardVariants} className="lg:col-span-7 bg-[#131c30] border border-white/8 rounded-2xl p-5">
-          <h3 className="text-sm font-bold text-white mb-1">API Latency</h3>
-          <p className="text-xs text-[#8b9ec7] mb-5">Average response time (ms) last 12 hours</p>
-          <div className="flex items-end gap-2 h-32">
-            {latency.map((val, i) => (
-              <motion.div
-                key={i}
-                initial={{ height: 0 }}
-                animate={{ height: `${(val / 100) * 100}%` }}
-                transition={{ delay: i * 0.05, type: "spring", stiffness: 200 }}
-                className={`flex-1 rounded-t ${val > 75 ? "bg-amber-500/60" : "bg-[#5b5cf6]/50"} hover:brightness-125 transition-all relative group`}
-                style={{ height: `${(val / 100) * 100}%` }}
-              >
-                <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-[#0f1829] border border-white/10 px-1.5 py-0.5 rounded text-[9px] text-white whitespace-nowrap">
-                  {val}ms
-                </div>
-              </motion.div>
-            ))}
-          </div>
-          <div className="flex justify-between mt-1 text-[9px] text-[#5b6fa8] font-mono">
-            <span>12h ago</span>
-            <span>6h ago</span>
-            <span>Now</span>
-          </div>
-        </motion.div>
+      {/* Controls */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[200px]">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
+          <input
+            className="w-full bg-slate-800/60 border border-white/10 rounded-lg pl-8 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-primary/50"
+            placeholder="Search by name, email, company…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-1 bg-slate-800/60 rounded-lg p-1 border border-white/5">
+          {(["all", "pending", "active", "suspended"] as const).map((f) => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold capitalize transition-all ${filter === f ? "bg-primary/20 text-primary" : "text-slate-400 hover:text-white"}`}>
+              {f}
+            </button>
+          ))}
+        </div>
+        <button onClick={load} className="p-2 rounded-lg bg-slate-800 border border-white/10 hover:bg-slate-700 transition-colors">
+          <span className="material-symbols-outlined text-slate-400 text-sm">refresh</span>
+        </button>
       </div>
 
-      {/* Audit Logs */}
-      <motion.div variants={cardVariants} className="bg-[#131c30] border border-white/8 rounded-2xl overflow-hidden">
-        <div className="p-5 border-b border-white/5 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white">Recent Audit Logs</h3>
-          <button className="text-[#5b5cf6] text-xs font-semibold hover:underline">View All</button>
-        </div>
+      {/* Table */}
+      <div className="glass-card rounded-xl overflow-hidden border border-white/5">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="bg-[#0f1829]/60 text-[#5b6fa8] uppercase tracking-wider font-mono text-[10px] border-b border-white/5">
-                <th className="px-5 py-3">User</th>
-                <th className="px-5 py-3">Action</th>
-                <th className="px-5 py-3">Type</th>
-                <th className="px-5 py-3 text-right">Time</th>
+              <tr className="border-b border-white/5 bg-slate-900/60">
+                {["Recruiter", "Company", "Email", "Status", "Joined", "Actions"].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">{h}</th>
+                ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
-              {auditLogs.map((log, i) => (
-                <motion.tr
-                  key={i}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.06 }}
-                  className="hover:bg-white/[0.02] transition-colors"
-                >
-                  <td className="px-5 py-3.5 text-white font-medium">{log.user}</td>
-                  <td className="px-5 py-3.5 text-[#8b9ec7]">{log.action}</td>
-                  <td className="px-5 py-3.5">
-                    <Badge variant={
-                      log.type === "approve" ? "success" :
-                      log.type === "system" ? "neutral" :
-                      log.type === "export" ? "primary" : "secondary"
-                    }>
-                      {log.type}
-                    </Badge>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={6} className="py-12 text-center"><Spinner /></td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={6} className="py-12 text-center text-slate-500 text-sm">No recruiters found</td></tr>
+              ) : filtered.map((r) => (
+                <motion.tr key={r.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                  className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
+                        {(r.first_name?.[0] ?? r.username?.[0] ?? "?").toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">{r.first_name} {r.last_name}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">@{r.username}</p>
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-5 py-3.5 text-right text-[#5b6fa8] font-mono">{log.time}</td>
+                  <td className="px-4 py-3 text-slate-300">{r.company_name ?? "—"}</td>
+                  <td className="px-4 py-3 text-slate-400 font-mono text-xs">{r.email}</td>
+                  <td className="px-4 py-3">{statusBadge(r)}</td>
+                  <td className="px-4 py-3 text-slate-500 text-xs font-mono">
+                    {r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1">
+                      {/* Approve — only if not already approved */}
+                      {!r.is_approved && (
+                        <button onClick={() => act(r.id, "approve")}
+                          disabled={!!acting}
+                          title="Approve"
+                          className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 transition-colors disabled:opacity-40">
+                          {acting === r.id + "approve" ? <Spinner /> : <span className="material-symbols-outlined text-base">check_circle</span>}
+                        </button>
+                      )}
+                      {/* Suspend — only if currently active */}
+                      {r.is_active && r.is_approved && (
+                        <button onClick={() => act(r.id, "reject")}
+                          disabled={!!acting}
+                          title="Suspend"
+                          className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 transition-colors disabled:opacity-40">
+                          {acting === r.id + "reject" ? <Spinner /> : <span className="material-symbols-outlined text-base">block</span>}
+                        </button>
+                      )}
+                      {/* Reinstate — if suspended */}
+                      {!r.is_active && r.is_approved && (
+                        <button onClick={() => act(r.id, "approve")}
+                          disabled={!!acting}
+                          title="Reinstate"
+                          className="p-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 transition-colors disabled:opacity-40">
+                          <span className="material-symbols-outlined text-base">restart_alt</span>
+                        </button>
+                      )}
+                      {/* Delete */}
+                      <button onClick={() => { if (window.confirm(`Delete ${r.first_name ?? r.username}? This cannot be undone.`)) act(r.id, "delete"); }}
+                        disabled={!!acting}
+                        title="Delete permanently"
+                        className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors disabled:opacity-40">
+                        <span className="material-symbols-outlined text-base">delete</span>
+                      </button>
+                    </div>
+                  </td>
                 </motion.tr>
               ))}
             </tbody>
           </table>
         </div>
+        <div className="px-4 py-2 border-t border-white/5 bg-slate-900/40 text-xs text-slate-500 font-mono">
+          {filtered.length} / {recruiters.length} recruiters
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tab: Users
+// ---------------------------------------------------------------------------
+
+function UsersTab() {
+  const [users, setUsers]     = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch]   = useState("");
+  const [acting, setActing]   = useState<string | null>(null);
+  const [toast, setToast]     = useState<{ msg: string; ok: boolean } | null>(null);
+
+  const showToast = (msg: string, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setUsers(await AdminService.listAllUsers()); }
+    catch { showToast("Failed to load users", false); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = users.filter((u) =>
+    search === "" ||
+    `${u.first_name} ${u.last_name} ${u.email} ${u.username}`.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const toggle = async (u: User) => {
+    setActing(u.id);
+    try {
+      if (u.is_active) { await AdminService.deactivateUser(u.id); showToast(`Deactivated ${u.username}`); }
+      else             { await AdminService.activateUser(u.id);   showToast(`Activated ${u.username}`);   }
+      await load();
+    } catch { showToast("Action failed", false); }
+    finally { setActing(null); }
+  };
+
+  const roleLabel = (u: User) => {
+    const r = u.roles?.[0]?.toLowerCase?.() ?? "candidate";
+    if (r.includes("admin"))     return <Badge label="Admin"     variant="neutral" />;
+    if (r.includes("recruiter")) return <Badge label="Recruiter" variant="warning" />;
+    return                              <Badge label="Candidate" variant="neutral" />;
+  };
+
+  return (
+    <div className="space-y-4">
+      <AnimatePresence>
+        {toast && (
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-xl text-sm font-semibold shadow-xl border ${toast.ok ? "bg-emerald-900/80 border-emerald-500/30 text-emerald-300" : "bg-red-900/80 border-red-500/30 text-red-300"}`}>
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex gap-3 items-center">
+        <div className="relative flex-1">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
+          <input
+            className="w-full bg-slate-800/60 border border-white/10 rounded-lg pl-8 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-primary/50"
+            placeholder="Search users by name, email, username…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <button onClick={load} className="p-2 rounded-lg bg-slate-800 border border-white/10 hover:bg-slate-700">
+          <span className="material-symbols-outlined text-slate-400 text-sm">refresh</span>
+        </button>
+      </div>
+
+      <div className="glass-card rounded-xl overflow-hidden border border-white/5">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/5 bg-slate-900/60">
+                {["User", "Email", "Role", "Status", "Last Login", "Action"].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={6} className="py-12 text-center"><Spinner /></td></tr>
+              ) : filtered.map((u) => (
+                <tr key={u.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-white text-xs font-bold">
+                        {(u.first_name?.[0] ?? u.username?.[0] ?? "?").toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">{u.first_name} {u.last_name}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">@{u.username}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-slate-400 font-mono text-xs">{u.email}</td>
+                  <td className="px-4 py-3">{roleLabel(u)}</td>
+                  <td className="px-4 py-3">
+                    {u.is_active ? <Badge label="Active" variant="success" /> : <Badge label="Inactive" variant="error" />}
+                  </td>
+                  <td className="px-4 py-3 text-slate-500 text-xs font-mono">
+                    {u.last_login ? new Date(u.last_login).toLocaleString() : "Never"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => toggle(u)} disabled={acting === u.id}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-40 ${u.is_active ? "bg-red-500/10 text-red-400 hover:bg-red-500/20" : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"}`}>
+                      {acting === u.id ? "…" : u.is_active ? "Deactivate" : "Activate"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-4 py-2 border-t border-white/5 bg-slate-900/40 text-xs text-slate-500 font-mono">
+          {filtered.length} users
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tab: System Health
+// ---------------------------------------------------------------------------
+
+function HealthDot({ status }: { status: "ok" | "degraded" | "unconfigured" }) {
+  const cls = { ok: "bg-emerald-400", degraded: "bg-red-400 animate-pulse", unconfigured: "bg-amber-400" }[status];
+  return <span className={`inline-block w-2 h-2 rounded-full ${cls}`} />;
+}
+
+function SystemHealthTab() {
+  const [health, setHealth]   = useState<SystemHealth | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+
+  const check = useCallback(async () => {
+    setLoading(true);
+    try {
+      const h = await AdminService.getSystemHealth();
+      setHealth(h);
+      setLastChecked(new Date());
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { check(); }, [check]);
+
+  const statusBadge = (s: "ok" | "degraded" | "unconfigured") => ({
+    ok:            <Badge label="Operational"   variant="success" />,
+    degraded:      <Badge label="Degraded"      variant="error"   />,
+    unconfigured:  <Badge label="Unconfigured"  variant="warning" />,
+  }[s]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-white font-bold">Live System Status</h3>
+          {lastChecked && (
+            <p className="text-xs text-slate-500 font-mono mt-0.5">
+              Last checked: {lastChecked.toLocaleTimeString()}
+            </p>
+          )}
+        </div>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+          onClick={check} disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 rounded-xl text-primary text-sm font-bold hover:bg-primary/20 transition-all disabled:opacity-50">
+          {loading ? <Spinner /> : <span className="material-symbols-outlined text-sm">refresh</span>}
+          Re-check
+        </motion.button>
+      </div>
+
+      {/* Service cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {health ? [
+          { label: "PostgreSQL Database",  data: health.database },
+          { label: "Gemini 2.5 Flash",     data: health.gemini   },
+          { label: "Groq llama-3.3-70b",   data: health.groq     },
+        ].map(({ label, data }) => (
+          <motion.div key={label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            className={`glass-card p-5 rounded-xl border ${data.status === "ok" ? "border-emerald-500/20" : data.status === "degraded" ? "border-red-500/20" : "border-amber-500/20"}`}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <HealthDot status={data.status} />
+                <span className="text-white font-bold text-sm">{label}</span>
+              </div>
+              {statusBadge(data.status)}
+            </div>
+            <div className="space-y-2">
+              {data.latency_ms !== null && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">Latency</span>
+                  <span className={`font-mono font-bold ${data.latency_ms < 500 ? "text-emerald-400" : data.latency_ms < 1500 ? "text-amber-400" : "text-red-400"}`}>
+                    {data.latency_ms.toFixed(0)} ms
+                  </span>
+                </div>
+              )}
+              {data.detail && (
+                <p className="text-[11px] text-slate-500 font-mono leading-relaxed break-all">{data.detail}</p>
+              )}
+              {data.status === "unconfigured" && (
+                <p className="text-[11px] text-amber-400/80 leading-relaxed">
+                  Add the API key to <code className="font-mono bg-white/5 px-1 rounded">backend/.env</code>
+                </p>
+              )}
+            </div>
+          </motion.div>
+        )) : (
+          <div className="md:col-span-3 py-12 text-center">
+            {loading ? <Spinner /> : <p className="text-slate-500">Click Re-check to probe services</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Config reference */}
+      <div className="glass-card p-5 rounded-xl border border-white/5">
+        <h4 className="text-white font-bold text-sm mb-3 flex items-center gap-2">
+          <span className="material-symbols-outlined text-primary text-base">settings</span>
+          Environment Variables Reference
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {[
+            { key: "GOOGLE_API_KEY",  svc: "Gemini 2.5 Flash",   url: "https://aistudio.google.com/app/apikey" },
+            { key: "GROQ_API_KEY",    svc: "Groq llama-3.3-70b", url: "https://console.groq.com/keys" },
+            { key: "DATABASE_*",      svc: "PostgreSQL",          url: "" },
+          ].map(({ key, svc, url }) => (
+            <div key={key} className="p-3 rounded-lg bg-slate-800/60 border border-white/5">
+              <code className="text-primary text-xs font-mono block mb-1">{key}</code>
+              <p className="text-slate-400 text-xs">{svc}</p>
+              {url && <a href={url} target="_blank" rel="noreferrer" className="text-[10px] text-primary/60 hover:text-primary font-mono">Get key →</a>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Page
+// ---------------------------------------------------------------------------
+
+const TABS = [
+  { id: 0, label: "Overview",      icon: "dashboard"       },
+  { id: 1, label: "Recruiters",    icon: "badge"           },
+  { id: 2, label: "All Users",     icon: "group"           },
+  { id: 3, label: "System Health", icon: "monitor_heart"   },
+];
+
+export function AdminDashboardPage() {
+  const [activeTab, setActiveTab] = useState(0);
+  const [stats, setStats]         = useState<PlatformStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try { setStats(await AdminService.getPlatformStats()); }
+      catch { /* stats are supplemental — fail silently */ }
+      finally { setStatsLoading(false); }
+    })();
+  }, []);
+
+  return (
+    <div className="p-6 md:p-10 max-w-[1400px] mx-auto w-full space-y-6 text-[#dae2fd]">
+
+      {/* ── Header ── */}
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="material-symbols-outlined text-primary text-xl">admin_panel_settings</span>
+            <span className="text-xs font-bold text-primary uppercase tracking-widest font-mono">Admin Control Panel</span>
+          </div>
+          <h1 className="text-2xl font-bold text-white">SmartHire AI Administration</h1>
+          <p className="text-sm text-slate-400 mt-0.5">Full platform control — manage users, monitor APIs, oversee recruiters</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {stats && stats.pending_recruiters > 0 && (
+            <motion.button
+              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+              onClick={() => setActiveTab(1)}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm font-bold hover:bg-amber-500/20 transition-all">
+              <span className="w-5 h-5 bg-amber-500 text-slate-900 text-xs font-black rounded-full flex items-center justify-center">
+                {stats.pending_recruiters}
+              </span>
+              Pending Approvals
+            </motion.button>
+          )}
+        </div>
       </motion.div>
-    </motion.div>
+
+      {/* ── Tab Bar ── */}
+      <div className="flex gap-1 bg-slate-900/60 border border-white/5 rounded-xl p-1 w-fit">
+        {TABS.map((t) => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+              activeTab === t.id
+                ? "bg-primary/15 text-primary border border-primary/20 shadow"
+                : "text-slate-400 hover:text-white hover:bg-white/5"
+            }`}>
+            <span className="material-symbols-outlined text-base">{t.icon}</span>
+            {t.label}
+            {t.id === 1 && stats && stats.pending_recruiters > 0 && (
+              <span className="w-4 h-4 bg-amber-500 text-slate-900 text-[9px] font-black rounded-full flex items-center justify-center">
+                {stats.pending_recruiters}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tab Content ── */}
+      <AnimatePresence mode="wait">
+        <motion.div key={activeTab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
+          transition={{ duration: 0.18 }}>
+          {activeTab === 0 && <OverviewTab stats={stats} loading={statsLoading} />}
+          {activeTab === 1 && <RecruitersTab />}
+          {activeTab === 2 && <UsersTab />}
+          {activeTab === 3 && <SystemHealthTab />}
+        </motion.div>
+      </AnimatePresence>
+    </div>
   );
 }

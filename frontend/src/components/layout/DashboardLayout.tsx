@@ -38,17 +38,15 @@ export function DashboardLayout() {
 
   const menuItems = isAdmin
     ? [
-        { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
-        { to: "/interviews", label: "Interviews", icon: "videocam" },
-        { to: "/candidates", label: "Candidates", icon: "group" },
-        { to: "/reports", label: "Reports", icon: "analytics" },
-        { to: "/ai-config", label: "AI Config", icon: "tune" },
-        { to: "/audit-logs", label: "Audit Logs", icon: "history" },
+        { to: "/dashboard", label: "Dashboard",     icon: "dashboard"          },
+        { to: "/candidates", label: "Candidates",   icon: "group"              },
+        { to: "/reports",    label: "Reports",      icon: "analytics"          },
+        { to: "/ai-config",  label: "AI Config",    icon: "tune"               },
+        { to: "/audit-logs", label: "Audit Logs",   icon: "history"            },
       ]
     : isRecruiter
     ? [
         { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
-        { to: "/interviews", label: "Interviews", icon: "videocam" },
         { to: "/candidates", label: "Candidates", icon: "group" },
         { to: "/reports", label: "Reports", icon: "analytics" },
         { to: "/library", label: "Library", icon: "folder" },

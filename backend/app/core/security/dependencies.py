@@ -91,3 +91,25 @@ async def get_current_admin(
     if UserRole.ADMIN not in roles:
         raise Forbidden("You do not have the required permissions to perform this action.")
     return current_user
+
+
+async def verify_jwt_only(
+    token: str | None = Depends(oauth2_scheme),
+) -> dict:
+    """Validate a Bearer JWT without a database round-trip.
+
+    Suitable for stateless endpoints (e.g., AI analysis) that only need to
+    confirm the caller is authenticated, not fetch the full user record.
+
+    Args:
+        token: The bearer token from the Authorization header.
+
+    Returns:
+        The decoded token payload (contains sub, email, role, etc.).
+
+    Raises:
+        Unauthorized: If token is missing or cryptographically invalid.
+    """
+    if not token:
+        raise Unauthorized("Missing authentication token.")
+    return verify_token(token, expected_type="access")

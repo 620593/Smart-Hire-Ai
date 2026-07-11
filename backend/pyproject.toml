@@ -19,7 +19,9 @@ dependencies = [
     "pdfplumber>=0.11.0",
     "groq>=0.9.0",
     "python-multipart>=0.0.32",
+    "google-genai>=1.0.0",
 ]
+
 
 [project.scripts]
 dev = "app.main:main"
