@@ -220,8 +220,33 @@ export function ReportPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Real data from the interview session (passed via router state)
-  const report: InterviewFinalizeResponse | undefined = location.state?.report;
+  // Real data from the interview session.
+  // Priority: router state (fresh from interview) → sessionStorage (persisted)
+  const stateReport: InterviewFinalizeResponse | undefined = location.state?.report;
+
+  const [report, setReport] = useState<InterviewFinalizeResponse | undefined>(() => {
+    if (stateReport) return stateReport;
+    // Fallback: try sessionStorage (populated after interview finishes)
+    try {
+      const stored = sessionStorage.getItem("last_interview_report");
+      if (stored) return JSON.parse(stored) as InterviewFinalizeResponse;
+    } catch {
+      // ignore parse errors
+    }
+    return undefined;
+  });
+
+  // Persist whenever we get fresh data from router state
+  useEffect(() => {
+    if (stateReport) {
+      setReport(stateReport);
+      try {
+        sessionStorage.setItem("last_interview_report", JSON.stringify(stateReport));
+      } catch {
+        // sessionStorage quota exceeded or unavailable — ignore
+      }
+    }
+  }, [stateReport]);
 
   const [showInsight, setShowInsight] = useState(true);
   const [circleOffset, setCircleOffset] = useState(351.85);
@@ -570,25 +595,32 @@ export function ReportPage() {
               ))}
             </div>
           ) : (
-            /* Fallback placeholder when no real data */
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[
-                { q: "Q1: System Scalability", score: 100, color: "border-l-success", gradient: "from-success/5" },
-                { q: "Q2: Distributed Locking", score: 95, color: "border-l-success", gradient: "from-success/5" },
-                { q: "Q3: Concurrency in Go", score: 78, color: "border-l-warning", gradient: "from-warning/5" },
-              ].map(({ q, score, color, gradient }) => (
-                <div
-                  key={q}
-                  className={`glass-card p-6 rounded-xl border-l-4 bg-gradient-to-r to-transparent ${color} ${gradient}`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-semibold text-on-surface-variant font-mono">{q}</span>
-                    <span className={`font-bold font-mono text-sm ${scoreColor(score)}`}>{score}%</span>
-                  </div>
-                  <p className="text-sm text-white">Complete an interview to see real analysis.</p>
-                </div>
-              ))}
-            </div>
+            /* Empty state — no dummy data */
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="col-span-12 flex flex-col items-center justify-center py-20 gap-6"
+            >
+              <div className="w-20 h-20 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+                <span className="material-symbols-outlined text-primary text-4xl">smart_toy</span>
+              </div>
+              <div className="text-center">
+                <h3 className="text-lg font-bold text-white mb-2">No interview data yet</h3>
+                <p className="text-sm text-on-surface-variant max-w-sm leading-relaxed">
+                  Complete an AI interview with AIRA to unlock your personalised
+                  assessment report with per-question scores, feedback, and improvement tips.
+                </p>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => navigate("/interviews")}
+                className="px-8 py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-sm font-bold rounded-xl shadow-lg shadow-violet-500/25 flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-base">play_circle</span>
+                Start Interview with AIRA
+              </motion.button>
+            </motion.div>
           )}
         </motion.section>
       </div>

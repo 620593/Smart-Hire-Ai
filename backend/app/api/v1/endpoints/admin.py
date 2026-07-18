@@ -342,3 +342,146 @@ async def system_health(
         gemini=gemini_status,
         groq=groq_status,
     )
+
+
+# ---------------------------------------------------------------------------
+# ── API Key Configuration ────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+
+def _mask_key(key: str | None) -> str:
+    """Return a masked representation of an API key for display."""
+    if not key:
+        return ""
+    if len(key) <= 8:
+        return "*" * len(key)
+    return key[:4] + "*" * (len(key) - 8) + key[-4:]
+
+
+class ApiKeyStatus(BaseModel):
+    """Describes current status of a single API key."""
+    name: str
+    is_set: bool
+    masked_value: str
+    service: str
+
+
+class ApiKeyStatusResponse(BaseModel):
+    keys: list[ApiKeyStatus]
+
+
+class UpdateApiKeysRequest(BaseModel):
+    google_api_key: str | None = None
+    groq_api_key: str | None = None
+
+
+class UpdateApiKeysResponse(BaseModel):
+    updated: list[str]
+    message: str
+
+
+@router.get(
+    "/config/keys",
+    response_model=ApiKeyStatusResponse,
+    summary="Get API key configuration status",
+)
+async def get_api_key_status(
+    _: User = Depends(get_current_admin),
+) -> ApiKeyStatusResponse:
+    """Return masked status of GOOGLE_API_KEY and GROQ_API_KEY."""
+    settings = get_settings()
+    google = settings.google_api_key or ""
+    groq   = settings.groq_api_key   or ""
+
+    return ApiKeyStatusResponse(keys=[
+        ApiKeyStatus(
+            name="GOOGLE_API_KEY",
+            is_set=bool(google),
+            masked_value=_mask_key(google),
+            service="Gemini 2.5 Flash",
+        ),
+        ApiKeyStatus(
+            name="GROQ_API_KEY",
+            is_set=bool(groq),
+            masked_value=_mask_key(groq),
+            service="Groq llama-3.3-70b-versatile",
+        ),
+    ])
+
+
+@router.put(
+    "/config/keys",
+    response_model=UpdateApiKeysResponse,
+    summary="Update API keys at runtime",
+)
+async def update_api_keys(
+    body: UpdateApiKeysRequest,
+    _: User = Depends(get_current_admin),
+) -> UpdateApiKeysResponse:
+    """
+    Update GOOGLE_API_KEY and/or GROQ_API_KEY at runtime.
+
+    Changes take effect immediately for new requests without a server restart.
+    The new values are also written back to the .env file for persistence.
+    """
+    updated: list[str] = []
+    env_path = os.path.join(os.path.dirname(__file__), "../../../../.env")
+    env_path = os.path.normpath(env_path)
+
+    def _read_env() -> dict[str, str]:
+        lines: dict[str, str] = {}
+        if not os.path.exists(env_path):
+            return lines
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, _, v = line.partition("=")
+                    lines[k.strip()] = v.strip()
+        return lines
+
+    def _write_env(data: dict[str, str]) -> None:
+        lines = []
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    stripped = line.strip()
+                    if "=" in stripped and not stripped.startswith("#"):
+                        k = stripped.partition("=")[0].strip()
+                        if k in data:
+                            lines.append(f"{k}={data.pop(k)}\n")
+                            continue
+                    lines.append(line)
+        # Append any remaining new keys
+        for k, v in data.items():
+            lines.append(f"{k}={v}\n")
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+
+    env_data: dict[str, str] = {}
+
+    if body.google_api_key is not None and body.google_api_key.strip():
+        new_val = body.google_api_key.strip()
+        os.environ["GOOGLE_API_KEY"] = new_val
+        env_data["GOOGLE_API_KEY"] = new_val
+        updated.append("GOOGLE_API_KEY")
+        logger.info("Admin updated GOOGLE_API_KEY")
+
+    if body.groq_api_key is not None and body.groq_api_key.strip():
+        new_val = body.groq_api_key.strip()
+        os.environ["GROQ_API_KEY"] = new_val
+        env_data["GROQ_API_KEY"] = new_val
+        updated.append("GROQ_API_KEY")
+        logger.info("Admin updated GROQ_API_KEY")
+
+    if env_data:
+        try:
+            existing = _read_env()
+            existing.update(env_data)
+            _write_env({k: v for k, v in env_data.items()})
+        except Exception as exc:
+            logger.warning("Could not persist API keys to .env: %s", exc)
+
+    return UpdateApiKeysResponse(
+        updated=updated,
+        message=f"Updated {len(updated)} key(s) successfully." if updated else "No keys were changed.",
+    )

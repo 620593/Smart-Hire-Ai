@@ -15,6 +15,10 @@ from fastapi import APIRouter, Depends
 
 from app.core.security.dependencies import verify_jwt_only
 from app.schemas.interview import (
+    GenerateQuestionsRequest,
+    GeneratedQuestionsResponse,
+    GenerateNextQuestionRequest,
+    GenerateNextQuestionResponse,
     InterviewFinalizeRequest,
     InterviewFinalizeResponse,
     QuestionAnalysisRequest,
@@ -22,9 +26,61 @@ from app.schemas.interview import (
 )
 from app.services.interview_analysis import InterviewAnalysisService
 from app.services.interview_finalizer import InterviewFinalizerService
+from app.services.interview_question_generator import InterviewQuestionGeneratorService
+from app.services.interview_dynamic_question import DynamicQuestionService
 
 router = APIRouter(prefix="/interview", tags=["interview"])
 
+
+@router.post(
+    "/generate-questions",
+    response_model=GeneratedQuestionsResponse,
+    summary="Generate personalized interview questions from resume + JD",
+    description=(
+        "Accepts the candidate's resume text and job description. "
+        "Uses Gemini 2.5 Flash (with Groq llama-3.3-70b fallback) to generate "
+        "tailored interview questions specific to this candidate and role."
+    ),
+    responses={
+        200: {"description": "Questions generated successfully."},
+        401: {"description": "Missing or invalid JWT Bearer token."},
+        502: {"description": "Both LLM APIs failed."},
+        503: {"description": "No LLM API key configured on the server."},
+    },
+)
+async def generate_questions(
+    payload: GenerateQuestionsRequest,
+    _token_payload: dict = Depends(verify_jwt_only),
+) -> GeneratedQuestionsResponse:
+    """Generate personalized interview questions via LLM."""
+    service = InterviewQuestionGeneratorService()
+    return await service.generate(payload)
+
+
+@router.post(
+    "/generate-next-question",
+    response_model=GenerateNextQuestionResponse,
+    summary="Generate the next contextual question dynamically during an interview",
+    description=(
+        "Accepts the full conversation history (prior Q&A pairs with scores) and "
+        "uses a dedicated question-generation LLM (separate from the analysis LLM) "
+        "to produce the next contextually relevant interview question. "
+        "This enables truly dynamic, human-like interview conversations."
+    ),
+    responses={
+        200: {"description": "Next question generated successfully."},
+        401: {"description": "Missing or invalid JWT Bearer token."},
+        502: {"description": "Both LLM APIs failed."},
+        503: {"description": "No LLM API key configured on the server."},
+    },
+)
+async def generate_next_question(
+    payload: GenerateNextQuestionRequest,
+    _token_payload: dict = Depends(verify_jwt_only),
+) -> GenerateNextQuestionResponse:
+    """Generate the next dynamic follow-up question using conversation context."""
+    service = DynamicQuestionService()
+    return await service.generate_next(payload)
 
 @router.post(
     "/analyze-question",

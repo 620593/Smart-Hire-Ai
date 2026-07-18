@@ -1,714 +1,968 @@
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+/**
+ * InterviewPage — AIRA-powered AI mock interview.
+ *
+ * Layout:
+ *  [Top Bar] — Timer | Progress | Status | End Button
+ *  [Main Content]
+ *    LEFT  (30%) — Candidate camera feed + Live vision analysis metrics
+ *    CENTER(40%) — AIRA avatar + question text
+ *    RIGHT (30%) — Question info + tips + transcription status
+ *  [Bottom Bar] — Live caption bar (when listening)
+ *
+ * Flow:
+ *  Step 1 — SETUP:  Enter job title + paste resume
+ *  Step 2 — READY:  "Start Interview" button (full-screen AIRA)
+ *  Step 3 — ACTIVE: Timer + dynamic AIRA questioning
+ *  Step 4 — REPORT: navigate("/reports")
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { useInterviewSession } from "@/hooks/useInterviewSession";
-import type { InterviewQuestion } from "@/types/interview";
+import { AIRAAvatar } from "@/components/avatar/AIRAAvatar";
+import { useAutoInterviewSession } from "@/hooks/useAutoInterviewSession";
+import { useResumeList } from "@/hooks/useResume";
+import { apiClient } from "@/lib/axios";
+import type { GeneratedQuestion } from "@/services/interview";
+import type { VisionMetrics } from "@/types/interview";
 
 // ---------------------------------------------------------------------------
-// Browser-compat check (Web Speech API)
+// Browser compat
 // ---------------------------------------------------------------------------
 
 const SPEECH_SUPPORTED =
   typeof window !== "undefined" &&
-  !!(
-    (window as unknown as Record<string, unknown>)["SpeechRecognition"] ||
-    (window as unknown as Record<string, unknown>)["webkitSpeechRecognition"]
+  !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+
+// ---------------------------------------------------------------------------
+// CountdownTimer
+// ---------------------------------------------------------------------------
+
+function CountdownTimer({ seconds, running }: { seconds: number; running: boolean }) {
+  const mins = Math.floor(seconds / 60).toString().padStart(2, "0");
+  const secs = (seconds % 60).toString().padStart(2, "0");
+  const isCritical = seconds <= 30 && running;
+  const isLow      = seconds <= 60 && running;
+
+  return (
+    <div className={`flex items-center gap-2 px-4 py-2 rounded-full border font-mono text-sm font-bold transition-all ${
+      isCritical ? "bg-red-500/15 border-red-500/50 text-red-400" :
+      isLow      ? "bg-amber-500/15 border-amber-500/40 text-amber-300" :
+      running    ? "bg-violet-500/15 border-violet-500/40 text-violet-200" :
+                   "bg-slate-800/50 border-white/10 text-slate-500"
+    }`}>
+      {/* Blinking dot shows timer is LIVE */}
+      {running && (
+        <motion.span
+          animate={{ opacity: [1, 0.2, 1] }}
+          transition={{ duration: 1, repeat: Infinity }}
+          className={`w-2 h-2 rounded-full shrink-0 ${
+            isCritical ? "bg-red-400" : isLow ? "bg-amber-400" : "bg-violet-400"
+          }`}
+        />
+      )}
+      <span className="material-symbols-outlined text-sm">timer</span>
+      {mins}:{secs}
+    </div>
   );
-
-// ---------------------------------------------------------------------------
-// Animation variants
-// ---------------------------------------------------------------------------
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.1 } },
-};
-
-const itemVariants = {
-  hidden: { y: 20, opacity: 0 },
-  show: {
-    y: 0,
-    opacity: 1,
-    transition: { type: "spring" as const, stiffness: 300, damping: 25 },
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Timer component (isolated to avoid re-rendering the entire page)
-// ---------------------------------------------------------------------------
-
-function ElapsedTimer({ active }: { active: boolean }) {
-  const [elapsed, setElapsed] = useState(0);
-  const startRef = useRef<number>(0);
-  const rafRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (active) {
-      startRef.current = performance.now() - elapsed * 1000;
-      const tick = () => {
-        setElapsed((performance.now() - startRef.current) / 1000);
-        rafRef.current = requestAnimationFrame(tick);
-      };
-      rafRef.current = requestAnimationFrame(tick);
-    } else {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    }
-    return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
-
-  const m = Math.floor(elapsed / 60).toString().padStart(2, "0");
-  const s = Math.floor(elapsed % 60).toString().padStart(2, "0");
-  return <span className="text-sm font-semibold font-mono text-on-surface">{m}:{s}</span>;
 }
 
 // ---------------------------------------------------------------------------
-// Metric Bar
+// LiveVisionPanel — candidate camera + real-time metrics
 // ---------------------------------------------------------------------------
 
-function MetricBar({ label, value, color = "bg-primary" }: { label: string; value: number; color?: string }) {
+interface LiveVisionPanelProps {
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  liveMetrics: VisionMetrics;
+  isActive: boolean;
+  permGranted: boolean;
+}
+
+function LiveVisionPanel({ videoRef, liveMetrics, isActive, permGranted }: LiveVisionPanelProps) {
+  const metrics = [
+    {
+      label: "Eye Contact",
+      value: liveMetrics?.eye_contact_percent ?? 0,
+      icon: "visibility",
+      good: 70,
+      color: "violet",
+    },
+    {
+      label: "Attention",
+      value: liveMetrics?.attention_percent ?? 0,
+      icon: "psychology",
+      good: 65,
+      color: "blue",
+    },
+    {
+      label: "Confidence",
+      value: liveMetrics?.confidence ?? 0,
+      icon: "emoji_emotions",
+      good: 60,
+      color: "emerald",
+    },
+    {
+      label: "Face Presence",
+      value: liveMetrics?.face_presence_percent ?? 0,
+      icon: "accessibility_new",
+      good: 65,
+      color: "amber",
+    },
+  ];
+
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between items-center text-xs">
-        <span className="font-medium text-on-surface-variant">{label}</span>
-        <span className="font-bold text-primary">{Math.round(value)}%</span>
+    <div className="flex flex-col gap-4 h-full">
+      {/* Camera feed */}
+      <div className="relative rounded-2xl overflow-hidden bg-slate-900/80 border border-white/8 aspect-video shrink-0">
+        {permGranted ? (
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full object-cover scale-x-[-1]"
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-600">
+            <span className="material-symbols-outlined text-3xl">videocam_off</span>
+            <span className="text-xs font-mono">Camera not available</span>
+          </div>
+        )}
+
+        {/* Camera overlay badge */}
+        <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm border border-white/10">
+          <motion.div
+            animate={{ opacity: isActive ? [1, 0.3, 1] : 1 }}
+            transition={{ duration: 1.2, repeat: isActive ? Infinity : 0 }}
+            className={`w-2 h-2 rounded-full ${isActive ? "bg-red-500" : "bg-slate-600"}`}
+          />
+          <span className="text-[10px] font-mono text-white/70">
+            {isActive ? "LIVE" : "PAUSED"}
+          </span>
+        </div>
+
+        {/* Candidate label */}
+        <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10">
+          <span className="text-[10px] font-mono text-white/70">You</span>
+        </div>
       </div>
-      <div className="h-1.5 w-full bg-slate-800/50 rounded-full overflow-hidden">
-        <motion.div
-          className={`h-full ${color} rounded-full`}
-          animate={{ width: `${Math.min(100, value)}%` }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-        />
+
+      {/* Live analysis metrics */}
+      <div className="flex-1 space-y-3">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="material-symbols-outlined text-violet-400 text-sm">analytics</span>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest font-mono">
+            Live Analysis
+          </span>
+          {isActive && (
+            <motion.div
+              animate={{ opacity: [1, 0.3, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400"
+            />
+          )}
+        </div>
+
+        {metrics.map(({ label, value, icon, good, color }) => {
+          const pct = Math.min(Math.round(value), 100);
+          const isGood = pct >= good;
+          const colorMap: Record<string, string> = {
+            violet:  "bg-violet-400",
+            blue:    "bg-blue-400",
+            emerald: "bg-emerald-400",
+            amber:   "bg-amber-400",
+          };
+          const barColor = colorMap[color] ?? "bg-violet-400";
+          const textColor = isGood ? "text-emerald-400" : pct > 40 ? "text-amber-400" : "text-red-400";
+
+          return (
+            <div key={label} className="space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-slate-500 text-sm">{icon}</span>
+                  <span className="text-[11px] text-slate-400 font-mono">{label}</span>
+                </div>
+                <span className={`text-[11px] font-bold font-mono ${textColor}`}>{pct}%</span>
+              </div>
+              <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <motion.div
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 0.5 }}
+                  className={`h-full rounded-full ${barColor} ${isActive ? "opacity-100" : "opacity-30"}`}
+                />
+              </div>
+            </div>
+          );
+        })}
+
+        {!isActive && (
+          <p className="text-[10px] text-slate-600 font-mono text-center pt-1">
+            Analysis active during listening
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Main Page
+// SetupScreen
+// ---------------------------------------------------------------------------
+
+interface SetupProps {
+  onReady: (jobTitle: string, resumeText: string, jobDesc: string) => void;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  permGranted: boolean;
+  permError: string | null;
+}
+
+function SetupScreen({ onReady, videoRef, permGranted, permError }: SetupProps) {
+  const [resumeText,     setResumeText]     = useState("");
+  const [jobDesc,        setJobDesc]        = useState("");
+  const [jobTitle,       setJobTitle]       = useState("");
+  const [error,          setError]          = useState<string | null>(null);
+  const [resumeLoading,  setResumeLoading]  = useState(false);
+  const [resumeFilename, setResumeFilename] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Auto-fetch the user's latest resume from the Resume section
+  const { data: resumeList } = useResumeList();
+  useEffect(() => {
+    const resumes = resumeList?.resumes;
+    if (!resumes || resumes.length === 0 || resumeText) return;
+    // Use the most recently uploaded resume
+    const latest = resumes.sort(
+      (a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()
+    )[0];
+    setResumeLoading(true);
+    setResumeFilename(latest.original_filename);
+    apiClient
+      .get<{ text: string }>(`/resumes/${latest.id}/text`)
+      .then((res) => {
+        if (res.data?.text) setResumeText(res.data.text);
+      })
+      .catch(() => { /* silently ignore — user can paste manually */ })
+      .finally(() => setResumeLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeList]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    if (file.type === "application/pdf") {
+      setError("PDF detected — please copy-paste your resume text into the box below.");
+      return;
+    }
+    const text = await file.text();
+    setResumeText(text);
+  };
+
+  const handleReady = () => {
+    if (!jobTitle.trim()) { setError("Please enter the job title."); return; }
+    onReady(jobTitle.trim(), resumeText.trim(), jobDesc.trim());
+  };
+
+  return (
+    <div className="min-h-screen bg-[#080C18] text-white flex flex-col">
+      {/* Ambient */}
+      <div className="fixed inset-0 pointer-events-none -z-10">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-violet-600/8 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-600/6 rounded-full blur-3xl" />
+      </div>
+
+      {/* Header */}
+      <header className="w-full bg-slate-900/70 backdrop-blur-xl border-b border-white/8 px-8 py-4 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
+          <span className="material-symbols-outlined text-violet-400 text-sm">psychology</span>
+        </div>
+        <span className="font-bold text-white">SmartHire AI</span>
+        <span className="text-slate-500 text-sm ml-2">· Interview Setup</span>
+      </header>
+
+      <div className="flex-1 max-w-5xl mx-auto w-full px-8 py-10 grid grid-cols-12 gap-8">
+        {/* Left — form */}
+        <div className="col-span-7 space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold text-white mb-1">Let's prepare your interview</h1>
+            <p className="text-sm text-slate-400">
+              AIRA will generate <strong className="text-white">5 personalised questions</strong> based on
+              your resume and role. Each question adapts based on your previous answers.
+            </p>
+          </div>
+
+          {/* Camera permission */}
+          <div className={`flex items-center gap-3 p-3 rounded-xl border text-xs font-mono ${
+            permGranted
+              ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-400"
+              : permError
+              ? "bg-red-500/5 border-red-500/20 text-red-400"
+              : "bg-amber-500/5 border-amber-500/20 text-amber-400"
+          }`}>
+            <span className="material-symbols-outlined text-sm">
+              {permGranted ? "videocam" : permError ? "videocam_off" : "videocam"}
+            </span>
+            {permGranted
+              ? "Camera & microphone ready"
+              : permError
+              ? `Camera error: ${permError}`
+              : "Requesting camera & microphone…"}
+            {permGranted && (
+              <div className="ml-auto w-16 h-12 rounded-lg overflow-hidden border border-white/10 bg-black">
+                <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
+              </div>
+            )}
+          </div>
+
+          {/* Job Title */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-violet-400 text-sm">work</span>
+              Job Title <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleReady()}
+              placeholder="e.g. Senior Software Engineer, Product Manager…"
+              className="w-full px-4 py-3 bg-slate-800/60 border border-white/10 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+            />
+          </div>
+
+          {/* Resume */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-300 flex items-center gap-2">
+              <span className="material-symbols-outlined text-violet-400 text-sm">description</span>
+              Resume / CV
+              <span className="text-slate-500 font-normal">(optional but recommended)</span>
+              {resumeLoading && (
+                <span className="ml-auto flex items-center gap-1 text-[10px] text-amber-400 font-mono">
+                  <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="material-symbols-outlined text-sm">progress_activity</motion.span>
+                  Fetching resume…
+                </span>
+              )}
+              {resumeFilename && !resumeLoading && resumeText && (
+                <span className="ml-auto flex items-center gap-1 text-[10px] text-emerald-400 font-mono">
+                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                  {resumeFilename}
+                </span>
+              )}
+            </label>
+            <div
+              className="border border-dashed border-white/15 rounded-xl p-4 cursor-pointer hover:border-violet-500/30 transition-all bg-slate-800/20 group"
+              onClick={() => fileRef.current?.click()}
+            >
+              <input ref={fileRef} type="file" accept=".txt,.pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" />
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-slate-500 group-hover:text-violet-400 transition-colors">upload_file</span>
+                <span className="text-sm text-slate-500 group-hover:text-slate-300 transition-colors">
+                  {resumeText ? "✓ Resume loaded — click to replace" : "Upload resume (.txt, .pdf)"}
+                </span>
+              </div>
+            </div>
+            <textarea
+              value={resumeText}
+              onChange={(e) => setResumeText(e.target.value)}
+              placeholder="Or paste your resume text here…"
+              rows={5}
+              className="w-full px-4 py-3 bg-slate-800/60 border border-white/10 rounded-xl text-xs text-slate-300 placeholder-slate-600 font-mono resize-none focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+            />
+          </div>
+
+          {/* Job Description */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-300 flex items-center gap-2">
+              <span className="material-symbols-outlined text-violet-400 text-sm">article</span>
+              Job Description
+              <span className="text-slate-500 font-normal">(optional)</span>
+            </label>
+            <textarea
+              value={jobDesc}
+              onChange={(e) => setJobDesc(e.target.value)}
+              placeholder="Paste the job description here for more targeted questions…"
+              rows={4}
+              className="w-full px-4 py-3 bg-slate-800/60 border border-white/10 rounded-xl text-xs text-slate-300 placeholder-slate-600 resize-none focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+            />
+          </div>
+
+          {/* Error */}
+          <AnimatePresence>
+            {error && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-mono">
+                {error}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={handleReady}
+            disabled={!jobTitle.trim()}
+            className="w-full py-4 bg-gradient-to-r from-violet-600 to-purple-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-violet-500/25 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all"
+          >
+            <span className="material-symbols-outlined text-base">arrow_forward</span>
+            Proceed to Interview
+          </motion.button>
+        </div>
+
+        {/* Right — AIRA + instructions */}
+        <div className="col-span-5 flex flex-col items-center gap-5 pt-8">
+          <AIRAAvatar state="greeting" />
+          <div className="text-center">
+            <p className="text-sm font-bold text-white">AIRA</p>
+            <p className="text-xs text-slate-400">AI Recruitment Assistant</p>
+          </div>
+          <div className="w-full p-4 rounded-xl bg-slate-800/40 border border-white/5 space-y-2.5">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">What to expect</p>
+            {[
+              ["auto_awesome", "Questions generated dynamically — no pre-loading"],
+              ["psychology",   "AIRA adapts each question based on your answer"],
+              ["record_voice_over", "AIRA reads each question aloud via voice"],
+              ["mic",          "Speak naturally — 2.5s silence auto-submits"],
+              ["analytics",    "Live eye contact, posture & confidence analysis"],
+              ["timer",        "10 minutes total · 5 personalised questions"],
+            ].map(([icon, text]) => (
+              <div key={icon} className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="material-symbols-outlined text-violet-400/70 text-sm">{icon}</span>
+                {text}
+              </div>
+            ))}
+          </div>
+          {!SPEECH_SUPPORTED && (
+            <div className="w-full p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400 flex items-start gap-2">
+              <span className="material-symbols-outlined text-sm shrink-0">warning</span>
+              Speech recognition requires Chrome or Edge.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main InterviewPage
 // ---------------------------------------------------------------------------
 
 export function InterviewPage() {
   const navigate = useNavigate();
-  const location = useLocation();
 
-  // Accept questions from route state (e.g., passed from Dashboard)
-  const routeQuestions: InterviewQuestion[] | undefined = location.state?.questions;
+  const videoRef  = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
-  const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [permGranted,  setPermGranted]  = useState(false);
+  const [permError,    setPermError]    = useState<string | null>(null);
+  const [seedQ1,       setSeedQ1]       = useState<GeneratedQuestion | null>(null);
+  const [jobTitle,     setJobTitle]     = useState("");
+  const [resumeText,   setResumeText]   = useState("");
+  const [jobDesc,      setJobDesc]      = useState("");
+  const [hasSetup,     setHasSetup]     = useState(false);
+  const [hasStarted,   setHasStarted]   = useState(false);
+  const [showEndModal, setShowEndModal] = useState(false);
+
+  const candidateName = localStorage.getItem("candidate_name") ?? "Candidate";
+
+  // Request camera + mic on mount
+  useEffect(() => {
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "user", width: 640, height: 480 }, audio: true })
+      .then((s) => {
+        streamRef.current = s;
+        setPermGranted(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = s;
+          videoRef.current.muted = true;
+        }
+      })
+      .catch((err) => {
+        setPermError(err.message ?? "Permission denied");
+      });
+
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   const {
     session,
     isVisionReady,
     isListening,
     liveMetrics,
-    startAnswer,
-    submitAnswer,
-    endInterview,
-  } = useInterviewSession(videoRef as React.RefObject<HTMLVideoElement | null>, routeQuestions);
+    isSpeaking,
+    startInterview,
+    endInterviewEarly,
+  } = useAutoInterviewSession(
+    videoRef as React.RefObject<HTMLVideoElement | null>,
+    seedQ1,
+    streamRef,
+  );
 
-  const currentQuestion = session.questions[session.currentIndex];
-  const totalQuestions = session.questions.length;
-  const isLastQuestion = session.currentIndex >= totalQuestions - 1 && session.phase === "done";
+  // Setup complete
+  const handleSetupReady = useCallback(
+    (jt: string, rt: string, jd: string) => {
+      setJobTitle(jt);
+      setResumeText(rt);
+      setJobDesc(jd);
+      setSeedQ1(null);
+      setHasSetup(true);
+    },
+    []
+  );
 
-  // ── Auto-start listening when phase resets to idle after done ───────────
-  useEffect(() => {
-    if (hasStarted && session.phase === "idle") {
-      // Do nothing — wait for user to click "Start Answering"
+  // Start interview
+  const handleStart = useCallback(() => {
+    if (!permGranted) return;
+    if (streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.muted = true;
     }
-  }, [hasStarted, session.phase]);
-
-  // ── Mute video element when isMuted changes ──────────────────────────────
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = true; // camera feed is always muted (no echo)
-  }, []);
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
-
-  const handleStartInterview = () => {
-    if (!SPEECH_SUPPORTED) return;
     setHasStarted(true);
-    startAnswer();
-  };
+    void startInterview(
+      candidateName, jobTitle, resumeText, jobDesc,
+      (report) => navigate("/reports", { state: { report: report ?? undefined } })
+    );
+  }, [permGranted, startInterview, candidateName, jobTitle, resumeText, jobDesc, navigate]);
 
-  const handleNextQuestion = async () => {
-    if (session.phase !== "listening") return;
-    await submitAnswer();
-  };
+  const handleEndEarly = useCallback(async () => {
+    setShowEndModal(false);
+    const report = await endInterviewEarly();
+    navigate("/reports", { state: { report: report ?? undefined } });
+  }, [endInterviewEarly, navigate]);
 
-  const handleEndInterview = async () => {
-    setShowEndConfirm(false);
-    try {
-      const candidateName =
-        localStorage.getItem("candidate_name") ?? "Candidate";
-      const report = await endInterview(candidateName, location.state?.jobTitle ?? "");
-      navigate("/reports", { state: { report } });
-    } catch (err) {
-      console.error("Failed to finalize interview:", err);
-      navigate("/reports");
-    }
-  };
-
-  // ── Browser compat warning ─────────────────────────────────────────────
-  if (!SPEECH_SUPPORTED) {
+  // Step 1: Setup
+  if (!hasSetup) {
     return (
-      <div className="h-screen flex items-center justify-center bg-background px-8">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="glass-panel p-10 rounded-2xl max-w-lg text-center border border-warning/30 bg-warning/5"
-        >
-          <span className="material-symbols-outlined text-warning text-6xl block mb-4">
-            warning
-          </span>
-          <h2 className="text-2xl font-bold text-on-surface mb-3">
-            Browser Not Supported
-          </h2>
-          <p className="text-on-surface-variant text-sm leading-relaxed mb-6">
-            Speech recognition is not supported in this browser. For the best
-            interview experience, please use{" "}
-            <strong className="text-white">Google Chrome</strong> or{" "}
-            <strong className="text-white">Microsoft Edge</strong>.
-          </p>
-          <div className="flex gap-3 justify-center text-xs text-on-surface-variant font-mono">
-            <span className="px-3 py-1.5 rounded-full border border-white/10 bg-slate-800/50">
-              Chrome 33+
-            </span>
-            <span className="px-3 py-1.5 rounded-full border border-white/10 bg-slate-800/50">
-              Edge 79+
-            </span>
-            <span className="px-3 py-1.5 rounded-full border border-white/10 bg-slate-800/50">
-              Opera 20+
-            </span>
-          </div>
-        </motion.div>
-      </div>
+      <SetupScreen
+        onReady={handleSetupReady}
+        videoRef={videoRef}
+        permGranted={permGranted}
+        permError={permError}
+      />
     );
   }
 
+  // Step 2 & 3: Full-screen interview
+  const currentQ    = session.currentQuestion ?? session.questions[session.currentIndex];
+  const totalQ      = 5;
+  const liveCaption = session.liveCaption;
+  const visionActive = session.phase === "listening";
+
   return (
     <motion.div
-      initial="hidden"
-      animate="show"
-      variants={containerVariants}
-      className="relative h-[calc(100vh-1px)] w-full flex flex-col overflow-hidden bg-background text-on-background selection:bg-primary-container selection:text-on-primary-container"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 z-50 flex flex-col bg-[#060912] text-white overflow-hidden"
     >
-      {/* ── Top Bar ── */}
-      <motion.header
-        variants={itemVariants}
-        className="w-full bg-background/80 backdrop-blur-xl border-b border-white/10 shadow-sm shrink-0"
-      >
-        <div className="flex justify-between items-center px-12 py-4 max-w-[1280px] mx-auto">
-          <div className="flex items-center gap-6">
-            <h1 className="text-xl font-bold font-display text-on-surface">SmartHire AI</h1>
-            <div className="h-6 w-px bg-white/10" />
-            <div className="flex items-center gap-4">
-              {/* Timer + progress */}
-              <div className="flex items-center gap-2 bg-surface-container-highest px-3 py-1 rounded-full border border-white/5">
-                <span className="material-symbols-outlined text-primary text-sm">schedule</span>
-                <ElapsedTimer active={session.phase === "listening"} />
-                <div className="w-px h-3 bg-white/20 mx-1" />
-                <span className="text-xs font-semibold font-mono text-on-primary-container">
-                  Q {session.currentIndex + 1} / {totalQuestions}
-                </span>
-              </div>
+      {/* Ambient background */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-violet-600/6 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 left-1/4 w-80 h-80 bg-blue-600/5 rounded-full blur-3xl" />
+        <div className="absolute top-1/3 right-1/4 w-64 h-64 bg-purple-600/4 rounded-full blur-3xl" />
+      </div>
 
-              {/* Phase indicator */}
-              <AnimatePresence mode="wait">
-                {session.phase === "listening" && (
-                  <motion.div
-                    key="listening"
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -8 }}
-                    className="flex items-center gap-1.5 text-success bg-success/5 px-3 py-1 rounded-full border border-success/20"
-                  >
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
-                    </span>
-                    <span className="text-xs font-medium font-mono uppercase tracking-wider">
-                      Recording
-                    </span>
-                  </motion.div>
-                )}
-                {session.phase === "processing" && (
-                  <motion.div
-                    key="processing"
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -8 }}
-                    className="flex items-center gap-1.5 text-warning bg-warning/5 px-3 py-1 rounded-full border border-warning/20"
-                  >
-                    <span className="material-symbols-outlined text-[14px] animate-spin">
-                      progress_activity
-                    </span>
-                    <span className="text-xs font-medium font-mono uppercase tracking-wider">
-                      Analysing
-                    </span>
-                  </motion.div>
-                )}
-                {session.phase === "idle" && !hasStarted && (
-                  <motion.div
-                    key="ready"
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -8 }}
-                    className="flex items-center gap-1.5 text-on-surface-variant bg-surface-container-highest/50 px-3 py-1 rounded-full border border-white/5"
-                  >
-                    <span className="material-symbols-outlined text-[14px]">radio_button_unchecked</span>
-                    <span className="text-xs font-medium font-mono uppercase tracking-wider">Ready</span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+      {/* ── Top Bar ── */}
+      <header className="relative z-10 shrink-0 w-full bg-black/30 backdrop-blur-xl border-b border-white/6 px-6 py-3">
+        <div className="flex items-center justify-between">
+          {/* Brand + job */}
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
+              <span className="material-symbols-outlined text-violet-400 text-sm">psychology</span>
+            </div>
+            <div>
+              <span className="text-sm font-bold text-white">SmartHire AI</span>
+              <span className="text-slate-500 text-xs ml-2 font-mono">· {jobTitle}</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="w-10 h-10 rounded-full overflow-hidden border border-white/20 ring-2 ring-primary/20 bg-surface-container-highest flex items-center justify-center">
-              <span className="material-symbols-outlined text-primary">person</span>
+          {/* Progress dots */}
+          {hasStarted && (
+            <div className="flex items-center gap-2">
+              {Array.from({ length: totalQ }).map((_, i) => {
+                const done   = i < session.results.length;
+                const active = i === session.currentIndex && hasStarted;
+                const score  = session.results[i]?.result?.overall_score;
+                return (
+                  <motion.div
+                    key={i}
+                    animate={{ scale: active ? [1, 1.3, 1] : 1 }}
+                    transition={{ duration: 1, repeat: active ? Infinity : 0 }}
+                    className={`rounded-full transition-all ${
+                      done
+                        ? score! >= 65
+                          ? "w-3 h-3 bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                          : "w-3 h-3 bg-amber-400"
+                        : active
+                        ? "w-3 h-3 bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.9)]"
+                        : "w-2 h-2 bg-slate-700"
+                    }`}
+                  />
+                );
+              })}
+              <span className="text-xs text-slate-500 font-mono ml-1">
+                {session.results.length}/{totalQ}
+              </span>
             </div>
+          )}
+
+          {/* Status + Timer + End */}
+          <div className="flex items-center gap-3">
+            <AnimatePresence mode="wait">
+              {session.phase === "listening" && (
+                <motion.span key="rec"
+                  initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                  className="flex items-center gap-1.5 text-emerald-400 bg-emerald-500/8 px-3 py-1 rounded-full border border-emerald-500/20 text-xs font-mono">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />Recording
+                </motion.span>
+              )}
+              {isSpeaking && session.phase !== "listening" && (
+                <motion.span key="spk"
+                  initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                  className="flex items-center gap-1.5 text-violet-400 bg-violet-500/8 px-3 py-1 rounded-full border border-violet-500/20 text-xs font-mono">
+                  <span className="w-2 h-2 rounded-full bg-violet-400 animate-ping" />AIRA Speaking
+                </motion.span>
+              )}
+              {(session.phase === "processing" || session.phase === "generating_question") && (
+                <motion.span key="proc"
+                  initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                  className="flex items-center gap-1.5 text-amber-400 bg-amber-500/8 px-3 py-1 rounded-full border border-amber-500/20 text-xs font-mono">
+                  <span className="material-symbols-outlined text-xs animate-spin">progress_activity</span>
+                  {session.phase === "generating_question" ? "Thinking…" : "Analysing…"}
+                </motion.span>
+              )}
+            </AnimatePresence>
+
+            <CountdownTimer seconds={session.timeRemainingSec} running={hasStarted} />
+
+            {hasStarted && (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setShowEndModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-bold hover:bg-red-500/15 transition-all"
+              >
+                <span className="material-symbols-outlined text-sm">call_end</span>
+                End
+              </motion.button>
+            )}
           </div>
         </div>
-      </motion.header>
+      </header>
 
-      {/* ── Main Workspace ── */}
-      <main className="relative flex-1 w-full max-w-[1280px] mx-auto px-12 py-6 grid grid-cols-12 gap-6 overflow-hidden">
+      {/* ── Main 3-column layout ── */}
+      <main className="relative z-10 flex-1 grid grid-cols-12 gap-0 overflow-hidden">
 
-        {/* ── Left Panel: Live AI Analytics ── */}
-        <motion.aside variants={itemVariants} className="col-span-3 flex flex-col gap-6 z-10">
-          {/* Live Metrics Card */}
-          <div className="glass-panel p-6 rounded-xl flex flex-col gap-4">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="material-symbols-outlined text-primary/60 text-[20px]">analytics</span>
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline font-mono">
-                Live Analysis
-              </h3>
-              {!isVisionReady && (
-                <span className="ml-auto text-[9px] text-on-surface-variant font-mono animate-pulse">
-                  Loading…
-                </span>
+        {/* LEFT — Camera + Live Vision Analysis */}
+        <aside className="col-span-3 flex flex-col p-4 border-r border-white/5 overflow-hidden">
+          <LiveVisionPanel
+            videoRef={videoRef}
+            liveMetrics={liveMetrics}
+            isActive={visionActive}
+            permGranted={permGranted}
+          />
+        </aside>
+
+        {/* CENTER — AIRA + Question */}
+        <section className="col-span-6 flex flex-col items-center justify-center px-6 overflow-hidden">
+          <motion.div
+            animate={{ y: hasStarted ? 0 : [0, -8, 0] }}
+            transition={hasStarted ? {} : { duration: 3, repeat: Infinity, ease: "easeInOut" }}
+            className="flex flex-col items-center gap-4"
+          >
+            <AIRAAvatar state={session.airaState} />
+
+            {/* AIRA speaking indicator */}
+            <div className="flex items-center gap-2">
+              <motion.span
+                animate={{ opacity: [1, 0.5, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="w-2 h-2 rounded-full bg-violet-400"
+              />
+              <span className="text-sm font-semibold text-violet-300 tracking-wide">AIRA</span>
+              {isSpeaking && (
+                <div className="flex items-center gap-0.5 ml-1">
+                  {[0, 0.1, 0.2].map((d, i) => (
+                    <motion.div key={i} className="w-1 h-3 bg-violet-400/60 rounded-full"
+                      animate={{ scaleY: [1, 2.5, 1] }}
+                      transition={{ duration: 0.4, delay: d, repeat: Infinity }} />
+                  ))}
+                </div>
               )}
             </div>
+          </motion.div>
 
-            <MetricBar label="Eye Contact" value={liveMetrics.eye_contact_percent} />
-            <MetricBar label="Attention" value={liveMetrics.attention_percent} color="bg-tertiary" />
-            <MetricBar label="Confidence" value={liveMetrics.confidence} color="bg-success" />
-
-            {/* Eye contact status */}
-            <div className="flex items-center justify-between py-1 border-y border-white/5">
-              <span className="text-xs font-medium text-on-surface-variant">Face Detected</span>
-              <div className="flex items-center gap-1.5">
-                <span className="relative flex h-2 w-2">
-                  <span
-                    className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                      liveMetrics.face_presence_percent > 50 ? "bg-success" : "bg-error"
-                    }`}
-                  />
-                  <span
-                    className={`relative inline-flex rounded-full h-2 w-2 ${
-                      liveMetrics.face_presence_percent > 50 ? "bg-success" : "bg-error"
-                    }`}
-                  />
-                </span>
-                <span
-                  className={`text-xs font-semibold font-mono ${
-                    liveMetrics.face_presence_percent > 50 ? "text-success/80" : "text-error/80"
-                  }`}
-                >
-                  {liveMetrics.face_presence_percent > 50 ? "Detected" : "Not found"}
-                </span>
-              </div>
-            </div>
-
-            {/* Smile + Blink */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-2 rounded-lg bg-white/5 border border-white/5 text-center">
-                <span className="text-[9px] font-bold text-on-surface-variant uppercase font-mono block mb-1">
-                  Smile
-                </span>
-                <span className="text-sm font-bold text-on-surface">
-                  {Math.round(liveMetrics.smile_score_percent)}%
-                </span>
-              </div>
-              <div className="p-2 rounded-lg bg-white/5 border border-white/5 text-center">
-                <span className="text-[9px] font-bold text-on-surface-variant uppercase font-mono block mb-1">
-                  Blink/min
-                </span>
-                <span className="text-sm font-bold text-on-surface">
-                  {Math.round(liveMetrics.blink_rate_per_minute)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Live Camera PIP */}
-          <div className="relative aspect-video w-full rounded-xl overflow-hidden border border-white/10 shadow-xl group bg-slate-950 flex items-center justify-center">
-            {/* Real camera feed */}
-            <video
-              ref={videoRef}
-              className="w-full h-full object-cover group-hover:grayscale-0 transition-all duration-500"
-              autoPlay
-              muted
-              playsInline
-            />
-            {/* Overlay when not started */}
-            {!hasStarted && (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 text-center text-xs text-on-surface-variant font-mono">
-                <span className="material-symbols-outlined text-4xl block mb-2 text-on-surface-variant/40">
-                  videocam
-                </span>
-              </div>
-            )}
-            <div className="absolute bottom-2 left-2 px-2.5 py-1 bg-background/80 backdrop-blur-md rounded-full border border-white/10 text-[9px] font-bold uppercase font-mono tracking-wider">
-              Live Camera
-            </div>
-          </div>
-        </motion.aside>
-
-        {/* ── Center: AI Avatar ── */}
-        <section className="col-span-6 relative flex flex-col items-center justify-center">
-          <div className="relative z-10 flex flex-col items-center">
-            <div className="relative w-80 h-80 flex items-center justify-center">
-              <div className="absolute inset-0 avatar-pulse bg-primary/10 rounded-full blur-3xl" />
-              <div className="absolute inset-4 avatar-pulse bg-primary/5 rounded-full blur-2xl [animation-delay:0.5s]" />
-
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                className="relative w-56 h-56 rounded-full border border-primary/20 flex items-center justify-center bg-surface-container-low shadow-[0_0_50px_rgba(195,192,255,0.1)] overflow-hidden"
-              >
-                <AnimatePresence mode="wait">
-                  {session.phase === "processing" ? (
-                    <motion.div
-                      key="processing"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="flex flex-col items-center gap-3"
-                    >
-                      <span className="material-symbols-outlined text-primary text-4xl animate-spin">
-                        progress_activity
-                      </span>
-                      <span className="text-[10px] text-primary/60 font-mono text-center px-4">
-                        {session.processingMessage}
-                      </span>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="wave"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="flex items-center gap-1.5"
-                    >
-                      {[0.1, 0.3, 0.5, 0.2, 0.4].map((delay, i) => (
-                        <div
-                          key={i}
-                          className={`w-1.5 rounded-full listening-wave ${
-                            isListening ? "bg-primary" : "bg-primary/30"
-                          }`}
-                          style={{ animationDelay: `${delay}s` }}
-                        />
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-
-              <div className="absolute inset-[-10px] rounded-full border border-primary/5 animate-[spin_10s_linear_infinite]" />
-              <div className="absolute inset-[-30px] rounded-full border border-white/5 animate-[spin_15s_linear_infinite_reverse]" />
-            </div>
-
-            <div className="mt-8 text-center">
-              <div className="flex items-center gap-3">
-                <span className="h-px w-8 bg-gradient-to-r from-transparent to-primary/40" />
-                <p className="text-xs font-bold text-primary tracking-[0.2em] uppercase font-mono">
-                  {session.phase === "listening"
-                    ? "Recording Your Answer"
-                    : session.phase === "processing"
-                    ? "Processing…"
-                    : "AI Interviewer"}
-                </p>
-                <span className="h-px w-8 bg-gradient-to-l from-transparent to-primary/40" />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Right Panel: Question + Tip ── */}
-        <motion.aside variants={itemVariants} className="col-span-3 flex flex-col gap-6 z-10">
-          {/* Question Card */}
+          {/* Question text */}
           <AnimatePresence mode="wait">
-            <motion.div
-              key={session.currentIndex}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="glass-panel p-6 rounded-xl border-l-4 border-l-primary relative overflow-hidden bg-surface-container/50"
-            >
-              <div className="absolute top-0 right-0 p-2 opacity-5">
-                <span className="material-symbols-outlined text-[64px]">chat_bubble</span>
-              </div>
-              <span className="text-[10px] font-bold text-primary/80 mb-2 block uppercase tracking-wider font-mono">
-                Question {session.currentIndex + 1} of {totalQuestions}
-              </span>
-              <h2 className="text-base font-bold leading-snug text-on-surface">
-                &quot;{currentQuestion?.text}&quot;
-              </h2>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="px-3 py-1 bg-slate-800/30 rounded-full text-[10px] font-semibold uppercase text-on-surface-variant border border-white/5 font-mono">
-                  {currentQuestion?.category}
-                </span>
-              </div>
+            {currentQ && hasStarted && (
+              <motion.div
+                key={currentQ.text.slice(0, 40)}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.4 }}
+                className="mt-6 max-w-xl w-full text-center px-4"
+              >
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <div className="h-px flex-1 bg-gradient-to-r from-transparent to-violet-500/30" />
+                  <span className="text-[11px] font-bold text-violet-400/80 uppercase tracking-widest font-mono">
+                    Question {session.currentIndex + 1} of {totalQ}
+                  </span>
+                  <div className="h-px flex-1 bg-gradient-to-l from-transparent to-violet-500/30" />
+                </div>
+                <p className="text-lg font-semibold text-white leading-relaxed tracking-tight">
+                  "{currentQ.text}"
+                </p>
+                {currentQ.category && (
+                  <span className="mt-3 inline-block px-3 py-1 bg-violet-500/10 border border-violet-500/20 rounded-full text-[11px] text-violet-300/80 font-mono">
+                    {currentQ.category}
+                  </span>
+                )}
+              </motion.div>
+            )}
 
-              {/* Per-question result badge */}
-              <AnimatePresence>
-                {session.phase === "done" &&
-                  session.results[session.currentIndex - 1] && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="mt-4 p-3 rounded-lg bg-success/10 border border-success/20"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-success font-mono uppercase">
-                          Score
-                        </span>
-                        <span className="text-sm font-bold text-success">
-                          {session.results[session.currentIndex - 1].result.overall_score}/100
-                        </span>
-                      </div>
-                    </motion.div>
+            {/* Pre-start */}
+            {!hasStarted && (
+              <motion.div
+                key="prestart"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-6 w-full max-w-sm"
+              >
+                <div className="p-6 rounded-2xl bg-slate-900/80 border border-violet-500/20 backdrop-blur text-center space-y-4">
+                  <p className="text-sm text-slate-400 leading-relaxed">
+                    AIRA will generate each question <strong className="text-white">dynamically</strong>,
+                    adapting to your previous answers in real time.
+                  </p>
+
+                  {!SPEECH_SUPPORTED && (
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400 flex items-start gap-2 text-left">
+                      <span className="material-symbols-outlined text-sm shrink-0">warning</span>
+                      Speech recognition requires Chrome or Edge.
+                    </div>
                   )}
-              </AnimatePresence>
-            </motion.div>
+
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={handleStart}
+                    disabled={!permGranted || !SPEECH_SUPPORTED}
+                    id="start-interview-btn"
+                    className="w-full py-4 bg-gradient-to-r from-violet-600 to-purple-600 text-white font-bold text-base rounded-xl shadow-xl shadow-violet-500/30 flex items-center justify-center gap-3 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all"
+                  >
+                    <span className="material-symbols-outlined text-xl">play_circle</span>
+                    Start Interview with AIRA
+                  </motion.button>
+
+                  {!permGranted && (
+                    <p className="text-xs text-amber-400">
+                      Camera & microphone permission required
+                    </p>
+                  )}
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
 
-          {/* Tip Card */}
-          <div className="p-6 rounded-xl bg-primary-container/5 border border-primary/10">
-            <div className="flex items-center gap-2 mb-2 text-primary/80">
-              <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
-              <span className="text-[10px] font-bold uppercase tracking-wide font-mono">
-                Interview Tip
-              </span>
-            </div>
-            <p className="text-xs text-on-surface-variant leading-relaxed">
-              {currentQuestion?.tip}
-            </p>
-          </div>
-
-          {/* Error Banner */}
+          {/* Error */}
           <AnimatePresence>
             {session.error && (
               <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
-                className="p-3 rounded-xl bg-error/10 border border-error/20 text-xs text-error font-mono"
+                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                className="mt-4 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 font-mono text-center"
               >
                 {session.error}
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.aside>
+        </section>
 
-        {/* ── Live Transcript Caption Overlay ── */}
-        <motion.div
-          variants={itemVariants}
-          className="absolute bottom-28 left-1/2 -translate-x-1/2 w-full max-w-3xl z-20"
-        >
-          <AnimatePresence>
-            {(session.liveCaption || session.phase === "listening") && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
-                className="glass-panel px-6 py-4 rounded-2xl shadow-2xl border border-white/10 bg-slate-950/95"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center shrink-0 border border-white/10">
-                    <span className="material-symbols-outlined text-md text-primary">mic</span>
-                  </div>
-                  <div className="flex-1 min-h-[24px]">
-                    <AnimatePresence mode="wait">
-                      <motion.p
-                        key={session.liveCaption}
-                        initial={{ opacity: 0, y: 3 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="text-sm font-medium text-on-surface leading-relaxed"
-                      >
-                        {session.liveCaption || (
-                          <span className="text-on-surface-variant/50 italic">
-                            Listening… start speaking
-                          </span>
-                        )}
-                      </motion.p>
-                    </AnimatePresence>
-                    <div className="mt-2 flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.2s]" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.4s]" />
-                      <span className="text-xs text-primary/60 font-semibold font-mono ml-2">
-                        Transcribing…
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-
-        {/* ── Floating Controls ── */}
-        <motion.div
-          variants={itemVariants}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4"
-        >
-          <div className="glass-panel p-3 rounded-full flex items-center gap-4 shadow-2xl bg-slate-900/80 border border-white/10">
-            {/* Device controls */}
-            <div className="flex items-center gap-1">
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setIsMuted(!isMuted)}
-                className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors ${
-                  isMuted ? "text-error" : "text-on-surface/80 hover:text-on-surface"
-                }`}
-                title="Mute Microphone"
-              >
-                <span className="material-symbols-outlined text-[20px]">
-                  {isMuted ? "mic_off" : "mic"}
+        {/* RIGHT — Interview info + transcription status */}
+        <aside className="col-span-3 flex flex-col p-4 border-l border-white/5 gap-4 overflow-y-auto">
+          {/* Session info */}
+          <div className="p-4 rounded-2xl bg-slate-900/50 border border-white/6 space-y-3">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Session</p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">Candidate</span>
+                <span className="text-white font-semibold">{candidateName}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">Role</span>
+                <span className="text-white font-semibold truncate max-w-[120px]">{jobTitle}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">Answered</span>
+                <span className="text-white font-semibold">{session.results.length} / {totalQ}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">Vision AI</span>
+                <span className={`font-semibold ${isVisionReady ? "text-emerald-400" : "text-amber-400"}`}>
+                  {isVisionReady ? "Ready" : "Loading…"}
                 </span>
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setShowSettings(!showSettings)}
-                className="w-10 h-10 flex items-center justify-center rounded-full transition-colors text-on-surface/80 hover:text-on-surface"
-                title="Settings"
-              >
-                <span className="material-symbols-outlined text-[20px]">settings</span>
-              </motion.button>
-            </div>
-
-            <div className="h-6 w-px bg-white/10" />
-
-            {/* Primary actions */}
-            <div className="flex items-center gap-3">
-              {/* End interview */}
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => setShowEndConfirm(true)}
-                className="px-5 py-2 bg-transparent text-error text-xs font-semibold rounded-full border border-error/20 hover:bg-error/10 transition-colors flex items-center gap-1.5"
-              >
-                <span className="material-symbols-outlined text-[18px]">call_end</span>
-                End Interview
-              </motion.button>
-
-              {/* Start / Next / Submit */}
-              {!hasStarted ? (
-                <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={handleStartInterview}
-                  disabled={!isVisionReady}
-                  className="px-6 py-2.5 bg-white text-slate-950 text-xs font-bold rounded-full flex items-center gap-1.5 hover:scale-[1.02] transition-all shadow-xl shadow-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span className="material-symbols-outlined text-[18px]">play_arrow</span>
-                  {isVisionReady ? "Start Interview" : "Loading…"}
-                </motion.button>
-              ) : session.phase === "listening" ? (
-                isLastQuestion ? (
-                  <motion.button
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={handleNextQuestion}
-                    className="px-6 py-2.5 bg-success text-slate-950 text-xs font-bold rounded-full flex items-center gap-1 shadow-xl shadow-success/20"
-                  >
-                    Finish & Get Report
-                    <span className="material-symbols-outlined text-[20px]">check_circle</span>
-                  </motion.button>
-                ) : (
-                  <motion.button
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={handleNextQuestion}
-                    className="px-6 py-2.5 bg-white text-slate-950 text-xs font-bold rounded-full flex items-center gap-1 hover:scale-[1.02] transition-all shadow-xl shadow-white/10 group"
-                  >
-                    Next Question
-                    <span className="material-symbols-outlined text-[20px] group-hover:translate-x-1 transition-transform">
-                      arrow_forward
-                    </span>
-                  </motion.button>
-                )
-              ) : session.phase === "done" ? (
-                <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={startAnswer}
-                  className="px-6 py-2.5 bg-white text-slate-950 text-xs font-bold rounded-full flex items-center gap-1 shadow-xl shadow-white/10"
-                >
-                  <span className="material-symbols-outlined text-[18px]">mic</span>
-                  Start Answering
-                </motion.button>
-              ) : (
-                // processing phase — show spinner
-                <div className="px-6 py-2.5 bg-white/10 text-white text-xs font-bold rounded-full flex items-center gap-2 opacity-60">
-                  <span className="material-symbols-outlined text-[18px] animate-spin">
-                    progress_activity
-                  </span>
-                  Analysing…
-                </div>
-              )}
+              </div>
             </div>
           </div>
-        </motion.div>
+
+          {/* Tip card */}
+          {currentQ?.tip && hasStarted && (
+            <motion.div
+              key={currentQ.tip}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-4 rounded-2xl bg-violet-500/5 border border-violet-500/15 space-y-2"
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-violet-400 text-sm">lightbulb</span>
+                <span className="text-[10px] font-bold text-violet-400/80 uppercase tracking-wider font-mono">Tip</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">{currentQ.tip}</p>
+            </motion.div>
+          )}
+
+          {/* Instructions */}
+          <div className="p-4 rounded-2xl bg-slate-900/40 border border-white/5 space-y-2">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">How it works</p>
+            {[
+              ["mic", "Speak clearly into your microphone"],
+              ["timer", "2.5s of silence auto-submits your answer"],
+              ["replay", 'Say "repeat" to re-hear the question'],
+              ["auto_awesome", "AIRA adapts each question to your answers"],
+            ].map(([icon, text]) => (
+              <div key={icon} className="flex items-start gap-2 text-[11px] text-slate-500">
+                <span className="material-symbols-outlined text-slate-600 text-sm shrink-0 mt-0.5">{icon}</span>
+                {text}
+              </div>
+            ))}
+          </div>
+
+          {/* Live transcription status */}
+          {session.phase === "listening" && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/15 space-y-2"
+            >
+              <div className="flex items-center gap-2">
+                <motion.div
+                  animate={{ scale: [1, 1.3, 1] }}
+                  transition={{ duration: 1, repeat: Infinity }}
+                  className="w-2 h-2 rounded-full bg-emerald-400"
+                />
+                <span className="text-[10px] font-bold text-emerald-400/80 uppercase tracking-wider font-mono">
+                  Recording
+                </span>
+              </div>
+              <p className="text-xs text-emerald-300/70 leading-relaxed min-h-[40px]">
+                {liveCaption || <span className="text-slate-600 italic">Listening for your voice…</span>}
+              </p>
+            </motion.div>
+          )}
+
+          {/* Processing status */}
+          {(session.phase === "processing" || session.phase === "generating_question") && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/15 flex items-center gap-3"
+            >
+              <span className="material-symbols-outlined text-amber-400 animate-spin text-lg">progress_activity</span>
+              <span className="text-xs text-amber-300/80 font-mono">{session.processingMessage}</span>
+            </motion.div>
+          )}
+        </aside>
       </main>
 
-      {/* ── End Interview Confirmation Modal ── */}
+      {/* ── Bottom caption bar: ALWAYS visible during listening phase ── */}
       <AnimatePresence>
-        {showEndConfirm && (
+        {session.phase === "listening" && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowEndConfirm(false)}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="relative z-10 shrink-0 mx-4 mb-3 rounded-2xl bg-black/60 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden"
+          >
+            <div className="absolute inset-0 rounded-2xl border border-emerald-500/30 animate-pulse pointer-events-none" />
+            <div className="flex items-center gap-4 px-5 py-4">
+              <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                <motion.span
+                  animate={{ scale: [1, 1.25, 1] }}
+                  transition={{ duration: 0.8, repeat: Infinity }}
+                  className="material-symbols-outlined text-emerald-400 text-xl"
+                >mic</motion.span>
+              </div>
+              <div className="flex-1 min-w-0">
+                {liveCaption ? (
+                  <>
+                    <p className="text-sm text-white leading-relaxed">{liveCaption}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-end gap-0.5">
+                        {[0, 0.12, 0.24].map((d, i) => (
+                          <motion.div key={i} className="w-1 bg-emerald-400/60 rounded-full"
+                            animate={{ height: ["3px", "10px", "3px"] }}
+                            transition={{ duration: 0.6, delay: d, repeat: Infinity }} />
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-emerald-400/60 font-mono">Transcribing</span>
+                      <span className="ml-auto text-[10px] text-slate-500 font-mono">
+                        {liveCaption.trim().split(/\s+/).filter(Boolean).length} words · 2.5s silence submits
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm text-slate-400 italic">Listening… speak your answer now</p>
+                    <div className="flex items-end gap-0.5">
+                      {[0, 0.15, 0.3, 0.15, 0].map((d, i) => (
+                        <motion.div key={i} className="w-1 bg-emerald-400/40 rounded-full"
+                          animate={{ height: ["4px", "12px", "4px"] }}
+                          transition={{ duration: 0.9, delay: d, repeat: Infinity }} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── End confirm modal ── */}
+      <AnimatePresence>
+        {showEndModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+            onClick={() => setShowEndModal(false)}
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="glass-panel p-8 rounded-2xl max-w-sm w-full mx-4 border border-white/10"
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9 }}
+              className="bg-[#0e1628] border border-white/10 p-8 rounded-2xl max-w-sm w-full mx-4 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-lg font-bold text-on-surface mb-2">End Interview?</h3>
-              <p className="text-sm text-on-surface-variant mb-6 leading-relaxed">
-                This will submit all your answers and generate your AI-powered assessment
-                report. {session.results.length} of {totalQuestions} questions answered.
+              <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-4 mx-auto">
+                <span className="material-symbols-outlined text-red-400 text-xl">call_end</span>
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2 text-center">End Interview Early?</h3>
+              <p className="text-sm text-slate-400 mb-6 leading-relaxed text-center">
+                AIRA will compile a report from{" "}
+                <strong className="text-white">{session.results.length}</strong> of{" "}
+                <strong className="text-white">{totalQ}</strong> answered questions.
               </p>
               <div className="flex gap-3">
                 <button
-                  onClick={() => setShowEndConfirm(false)}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-white/10 text-on-surface-variant text-sm font-semibold hover:bg-white/5 transition-colors"
+                  onClick={() => setShowEndModal(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-white/10 text-slate-400 text-sm font-semibold hover:bg-white/5 transition-colors"
                 >
                   Continue
                 </button>
                 <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleEndInterview}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-slate-950 text-sm font-bold shadow-lg shadow-primary/20 hover:opacity-90 transition-opacity"
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                  onClick={handleEndEarly}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-bold shadow-lg shadow-violet-500/25"
                 >
                   End & Get Report
                 </motion.button>
@@ -717,9 +971,6 @@ export function InterviewPage() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Background */}
-      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_50%_50%,rgba(195,192,255,0.03),transparent)] pointer-events-none" />
     </motion.div>
   );
 }

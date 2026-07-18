@@ -121,4 +121,42 @@ export const AdminService = {
     const { data } = await apiClient.get<SystemHealth>("/admin/health");
     return data;
   },
+
+  // ── API Key configuration ─────────────────────────────────────────────────
+
+  async getApiKeys(): Promise<ApiKeyStatusResponse> {
+    const { data } = await apiClient.get<ApiKeyStatusResponse>("/admin/config/keys");
+    return data;
+  },
+
+  async updateApiKeys(payload: UpdateApiKeysRequest): Promise<UpdateApiKeysResponse> {
+    const { data } = await apiClient.put<UpdateApiKeysResponse>("/admin/config/keys", payload);
+    return data;
+  },
 };
+
+// ---------------------------------------------------------------------------
+// API key config types
+// ---------------------------------------------------------------------------
+
+export interface ApiKeyStatus {
+  name: string;
+  is_set: boolean;
+  masked_value: string;
+  service: string;
+}
+
+export interface ApiKeyStatusResponse {
+  keys: ApiKeyStatus[];
+}
+
+export interface UpdateApiKeysRequest {
+  google_api_key?: string;
+  groq_api_key?: string;
+}
+
+export interface UpdateApiKeysResponse {
+  updated: string[];
+  message: string;
+}
+

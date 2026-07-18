@@ -14,6 +14,8 @@ import {
   AdminService,
   type PlatformStats,
   type SystemHealth,
+  type ApiKeyStatus as ApiKeyStatusType,
+  type UpdateApiKeysRequest,
 } from "@/services/auth";
 import type { User } from "@/types/auth";
 
@@ -534,6 +536,189 @@ function SystemHealthTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Tab: API Keys
+// ---------------------------------------------------------------------------
+
+function ApiKeysTab() {
+  const [keys, setKeys]       = useState<ApiKeyStatusType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [toast, setToast]     = useState<string | null>(null);
+  const [form, setForm]       = useState<UpdateApiKeysRequest>({ google_api_key: "", groq_api_key: "" });
+  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 4000); };
+
+  useEffect(() => {
+    AdminService.getApiKeys()
+      .then((res) => setKeys(res.keys))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.google_api_key?.trim() && !form.groq_api_key?.trim()) {
+      showToast("Enter at least one key to update.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload: UpdateApiKeysRequest = {};
+      if (form.google_api_key?.trim()) payload.google_api_key = form.google_api_key.trim();
+      if (form.groq_api_key?.trim())   payload.groq_api_key   = form.groq_api_key.trim();
+      const res = await AdminService.updateApiKeys(payload);
+      showToast("✓ " + res.message);
+      setForm({ google_api_key: "", groq_api_key: "" });
+      // Refresh key statuses
+      const fresh = await AdminService.getApiKeys();
+      setKeys(fresh.keys);
+    } catch {
+      showToast("✗ Failed to update API keys.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const KEY_META: Record<string, { label: string; icon: string; color: string; placeholder: string }> = {
+    GOOGLE_API_KEY: { label: "Google Gemini API Key", icon: "psychology", color: "bg-blue-500/20 border-blue-500/30", placeholder: "AIzaSy..." },
+    GROQ_API_KEY:   { label: "Groq API Key",          icon: "bolt",       color: "bg-orange-500/20 border-orange-500/30", placeholder: "gsk_..." },
+  };
+
+  return (
+    <motion.div initial="hidden" animate="show"
+      variants={{ show: { transition: { staggerChildren: 0.07 } } }}
+      className="space-y-6">
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className={`px-4 py-3 rounded-xl text-sm font-medium border ${
+              toast.startsWith("✓") ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-red-500/10 border-red-500/20 text-red-400"
+            }`}>
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Current key status */}
+      <motion.div variants={fade} className="glass-card rounded-xl border border-white/5 overflow-hidden">
+        <div className="p-5 border-b border-white/5">
+          <h3 className="text-sm font-bold text-white">Current API Key Status</h3>
+          <p className="text-xs text-on-surface-variant mt-0.5">Masked previews — values are never transmitted in full</p>
+        </div>
+        {loading ? (
+          <div className="p-8 flex justify-center"><div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /></div>
+        ) : (
+          <div className="divide-y divide-white/5">
+            {keys.map((key) => {
+              const meta = KEY_META[key.name] ?? { label: key.name, icon: "key", color: "bg-white/5 border-white/10", placeholder: "" };
+              return (
+                <div key={key.name} className="p-5 flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-xl ${meta.color} flex items-center justify-center border shrink-0`}>
+                    <span className="material-symbols-outlined text-white text-base">{meta.icon}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white">{meta.label}</p>
+                    <p className="text-xs text-slate-500 font-mono">{key.service}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {key.is_set ? (
+                      <>
+                        <span className="text-xs font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded">
+                          {showKey[key.name] ? key.masked_value : "•••• •••• " + key.masked_value.slice(-4)}
+                        </span>
+                        <button onClick={() => setShowKey((p) => ({ ...p, [key.name]: !p[key.name] }))}
+                          className="text-slate-500 hover:text-slate-300 transition-colors">
+                          <span className="material-symbols-outlined text-base">
+                            {showKey[key.name] ? "visibility_off" : "visibility"}
+                          </span>
+                        </button>
+                        <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-mono">SET</span>
+                      </>
+                    ) : (
+                      <span className="px-2 py-0.5 text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20 rounded font-mono">NOT SET</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </motion.div>
+
+      {/* Update form */}
+      <motion.div variants={fade} className="glass-card p-6 rounded-xl border border-white/5">
+        <h3 className="text-sm font-bold text-white mb-1">Update API Keys</h3>
+        <p className="text-xs text-on-surface-variant mb-5">Changes take effect immediately and are persisted to the .env file. Leave a field blank to keep the existing key.</p>
+
+        <form onSubmit={handleSave} className="space-y-4">
+          {/* Google API Key */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
+              <span className="material-symbols-outlined text-blue-400 text-sm">psychology</span>
+              GOOGLE_API_KEY — Gemini 2.5 Flash
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={form.google_api_key ?? ""}
+                onChange={(e) => setForm((p) => ({ ...p, google_api_key: e.target.value }))}
+                placeholder="AIzaSy..."
+                autoComplete="off"
+                className="flex-1 px-4 py-2.5 bg-slate-800 border border-white/10 rounded-xl text-sm text-white placeholder-slate-600 font-mono focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Groq API Key */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
+              <span className="material-symbols-outlined text-orange-400 text-sm">bolt</span>
+              GROQ_API_KEY — llama-3.3-70b-versatile
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={form.groq_api_key ?? ""}
+                onChange={(e) => setForm((p) => ({ ...p, groq_api_key: e.target.value }))}
+                placeholder="gsk_..."
+                autoComplete="off"
+                className="flex-1 px-4 py-2.5 bg-slate-800 border border-white/10 rounded-xl text-sm text-white placeholder-slate-600 font-mono focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 pt-2">
+            <motion.button
+              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+              type="submit" disabled={saving}
+              className="px-6 py-2.5 bg-primary text-slate-900 text-sm font-bold rounded-xl flex items-center gap-2 shadow-lg shadow-primary/20 disabled:opacity-50"
+            >
+              {saving ? <><div className="w-4 h-4 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin" /> Saving…</> : <><span className="material-symbols-outlined text-base">save</span>Update Keys</>}
+            </motion.button>
+            <p className="text-[10px] text-slate-600 font-mono">Keys are encrypted at rest in .env</p>
+          </div>
+        </form>
+      </motion.div>
+
+      {/* Security note */}
+      <motion.div variants={fade} className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 flex items-start gap-3">
+        <span className="material-symbols-outlined text-amber-400 text-base mt-0.5">security</span>
+        <div>
+          <p className="text-xs font-bold text-amber-400 mb-1">Security Notice</p>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            API keys grant access to paid AI services. Only update if your current keys have expired or been rotated.
+            Never share keys in logs, screenshots, or bug reports. If a key is compromised, rotate it immediately on the provider's dashboard.
+          </p>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 
@@ -542,6 +727,7 @@ const TABS = [
   { id: 1, label: "Recruiters",    icon: "badge"           },
   { id: 2, label: "All Users",     icon: "group"           },
   { id: 3, label: "System Health", icon: "monitor_heart"   },
+  { id: 4, label: "API Keys",      icon: "key"             },
 ];
 
 export function AdminDashboardPage() {
@@ -614,6 +800,7 @@ export function AdminDashboardPage() {
           {activeTab === 1 && <RecruitersTab />}
           {activeTab === 2 && <UsersTab />}
           {activeTab === 3 && <SystemHealthTab />}
+          {activeTab === 4 && <ApiKeysTab />}
         </motion.div>
       </AnimatePresence>
     </div>

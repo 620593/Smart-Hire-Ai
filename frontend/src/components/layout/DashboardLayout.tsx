@@ -53,10 +53,10 @@ export function DashboardLayout() {
         { to: "/team", label: "Team", icon: "people" },
       ]
     : [
-        { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
-        { to: "/resume", label: "Resume", icon: "description" },
+        { to: "/dashboard",  label: "Dashboard",     icon: "dashboard" },
+        { to: "/resume",     label: "Resume",         icon: "description" },
         { to: "/interviews", label: "Mock Interviews", icon: "videocam" },
-        { to: "/reports", label: "AI Feedback", icon: "analytics" },
+        { to: "/reports",    label: "AI Feedback",    icon: "chat_bubble" },
       ];
 
   const roleLabel = isAdmin
@@ -88,7 +88,7 @@ export function DashboardLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b1220] text-[#dae2fd] flex overflow-hidden">
+    <div className="min-h-screen bg-[#0b1220] text-[#dae2fd] flex">
 
       {/* ── Mobile Top Bar ── */}
       <header className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-[#0e1628]/90 backdrop-blur-md border-b border-white/8 z-40 flex items-center justify-between px-5">

@@ -160,6 +160,12 @@ function accumulatorToMetrics(acc: FrameAccumulator): VisionMetrics {
 
 export interface UseVideoAnalysisOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
+  /**
+   * Optional RefObject pointing to an already-open MediaStream.
+   * Passing a RefObject (not .current) lets startCapture() always read the
+   * latest stream value — avoids stale-null from first-render snapshot.
+   */
+  externalStream?: React.RefObject<MediaStream | null> | null;
 }
 
 export interface UseVideoAnalysisReturn {
@@ -179,6 +185,7 @@ export interface UseVideoAnalysisReturn {
 
 export function useVideoAnalysis({
   videoRef,
+  externalStream,
 }: UseVideoAnalysisOptions): UseVideoAnalysisReturn {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isActive, setIsActive] = useState(false);
@@ -301,18 +308,34 @@ export function useVideoAnalysis({
     }
     if (!videoRef.current) return;
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, facingMode: "user" },
-        audio: false,
-      });
-      streamRef.current = stream;
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play();
-    } catch (err) {
-      console.error("[useVideoAnalysis] Camera access denied:", err);
-      setError("Camera access denied. Please allow camera permissions.");
-      return;
+    // Dereference at call-time — the stream may have arrived after first render
+    const stream = externalStream?.current ?? null;
+
+    if (stream) {
+      // Reuse the external stream — don't open a new camera
+      if (videoRef.current.srcObject !== stream) {
+        videoRef.current.srcObject = stream;
+        try {
+          await videoRef.current.play();
+        } catch {
+          // Already playing — ignore
+        }
+      }
+    } else {
+      // No external stream — request camera ourselves
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: "user" },
+          audio: false,
+        });
+        streamRef.current = newStream;
+        videoRef.current.srcObject = newStream;
+        await videoRef.current.play();
+      } catch (err) {
+        console.error("[useVideoAnalysis] Camera access denied:", err);
+        setError("Camera access denied. Please allow camera permissions.");
+        return;
+      }
     }
 
     // Reset accumulator
@@ -322,7 +345,7 @@ export function useVideoAnalysis({
     isActiveRef.current = true;
     setIsActive(true);
     animFrameRef.current = requestAnimationFrame(processFrame);
-  }, [videoRef, processFrame]);
+  }, [videoRef, externalStream, processFrame]);
 
   // ── stopCapture ──────────────────────────────────────────────────────────
   const stopCapture = useCallback((): VisionMetrics => {
@@ -334,19 +357,20 @@ export function useVideoAnalysis({
       animFrameRef.current = null;
     }
 
-    // Stop camera stream
-    if (streamRef.current) {
+    // Only stop tracks if WE own the stream (not an external RefObject stream)
+    const hasExternal = !!(externalStream?.current);
+    if (!hasExternal && streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
-    if (videoRef.current) {
+    if (!hasExternal && videoRef.current) {
       videoRef.current.srcObject = null;
     }
 
     const metrics = accumulatorToMetrics(accRef.current);
     setLiveMetrics(metrics);
     return metrics;
-  }, [videoRef]);
+  }, [videoRef, externalStream]);
 
   // ── Cleanup on unmount ───────────────────────────────────────────────────
   useEffect(() => {

@@ -177,3 +177,94 @@ class InterviewFinalizeResponse(BaseModel):
     question_results: list[QuestionAnalysisResponse]
     weak_questions: list[WeakQuestion]
     result: InterviewFinalizeResult
+
+
+# ---------------------------------------------------------------------------
+# LLM-generated questions from resume + JD
+# ---------------------------------------------------------------------------
+
+
+class GenerateQuestionsRequest(BaseModel):
+    """Request to generate personalized interview questions."""
+
+    resume_text: str = Field(
+        default="",
+        max_length=20_000,
+        description="Raw text extracted from the candidate's resume.",
+    )
+    job_description: str = Field(
+        default="",
+        max_length=10_000,
+        description="Job description / role requirements text.",
+    )
+    job_title: str = Field(
+        default="",
+        max_length=200,
+        description="The role title (used in question context).",
+    )
+    num_questions: int = Field(
+        default=5,
+        ge=3,
+        le=10,
+        description="Number of questions to generate.",
+    )
+
+
+class GeneratedQuestion(BaseModel):
+    """A single LLM-generated interview question."""
+
+    text: str
+    category: str
+    tip: str
+
+
+class GeneratedQuestionsResponse(BaseModel):
+    """Response envelope for the question generation endpoint."""
+
+    job_title: str
+    questions: list[GeneratedQuestion]
+
+
+# ---------------------------------------------------------------------------
+# Dynamic follow-up question generation
+# ---------------------------------------------------------------------------
+
+
+class PriorQAPair(BaseModel):
+    """A single prior question-answer pair for conversation context."""
+
+    question_text: str = Field(..., description="The question that was asked.")
+    answer_transcript: str = Field(default="", description="The candidate's answer transcript.")
+    answer_score: int = Field(default=0, ge=0, le=100, description="Overall score for this answer.")
+    category: str = Field(default="General", description="Category of the question.")
+
+
+class GenerateNextQuestionRequest(BaseModel):
+    """Request to generate the next contextual follow-up question during an interview."""
+
+    job_title: str = Field(default="", max_length=200)
+    resume_text: str = Field(default="", max_length=20_000)
+    job_description: str = Field(default="", max_length=10_000)
+    prior_qa_pairs: list[PriorQAPair] = Field(
+        default_factory=list,
+        description="All prior question-answer pairs in the interview so far.",
+    )
+    question_number: int = Field(
+        default=1, ge=1, description="Which question number this will be (1-based)."
+    )
+    total_questions: int = Field(
+        default=5, ge=1, description="Total number of questions planned."
+    )
+    covered_categories: list[str] = Field(
+        default_factory=list,
+        description="Categories already covered — avoid repeating.",
+    )
+
+
+class GenerateNextQuestionResponse(BaseModel):
+    """Response envelope for the next-question generation endpoint."""
+
+    question_text: str
+    category: str
+    tip: str
+
