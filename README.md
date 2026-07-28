@@ -32,7 +32,7 @@ SmartHire AI is a production-focused, AI-powered mock interview and candidate as
 |-------|------------|
 | **Backend** | FastAPI 0.115, Python 3.12, `uv`, SQLAlchemy 2.0 Async, Alembic, asyncpg |
 | **Database** | PostgreSQL 18 (asyncpg driver, connection-pool health probes) |
-| **Primary LLM** | Google Gemini 2.5 Flash (`gemini-2.5-flash-preview-05-20`) via `google-genai` SDK |
+| **Primary LLM** | Google Gemini 3.1 Flash-Lite (`gemini-3.1-flash-lite`) via `google-genai` SDK |
 | **Fallback LLM** | Groq `llama-3.3-70b-versatile` via `groq` async SDK |
 | **Vision / CV** | MediaPipe Face Landmarker (WASM, runs 100 % in-browser) |
 | **Speech** | Web Speech API (browser-native STT, Chromium-family only) |
@@ -79,11 +79,11 @@ smarthire-ai/
 
 ## AI Models Used
 
-### 1. Google Gemini 2.5 Flash — Primary Evaluator
+### 1. Google Gemini 3.1 Flash-Lite — Primary Evaluator
 
 | Property | Value |
 |----------|-------|
-| **Model ID** | `gemini-2.5-flash-preview-05-20` |
+| **Model ID** | `gemini-3.1-flash-lite` (Configurable via `GEMINI_MODEL`) |
 | **SDK** | `google-genai` (Python, v1.0+ async client) |
 | **Role** | Per-question analysis + full-interview report generation |
 | **Output format** | Forced JSON via `response_mime_type="application/json"` |

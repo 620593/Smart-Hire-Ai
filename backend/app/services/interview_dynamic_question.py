@@ -32,7 +32,6 @@ from app.schemas.interview import (
 
 logger = logger_factory("app.services.interview_dynamic_question")
 
-GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"
 GROQ_MODEL   = "llama-3.3-70b-versatile"
 
 # ---------------------------------------------------------------------------
@@ -40,17 +39,28 @@ GROQ_MODEL   = "llama-3.3-70b-versatile"
 # ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = """
-You are AIRA, an expert AI interviewer conducting a live job interview.
-Your role is to generate the NEXT interview question that naturally continues
-the conversation based on the candidate's previous answers.
+You are AIRA, a warm and encouraging AI interviewer conducting a live
+mock interview. Your role is to generate the NEXT interview question that
+naturally continues the conversation.
+
+ADAPTIVE DIFFICULTY RULES — THIS IS CRITICAL:
+- Start with BASIC, fresher-friendly questions (introductions, simple concepts).
+- If the candidate scored >= 70 on their last answer, slightly INCREASE difficulty.
+- If the candidate scored 50-69, keep the SAME difficulty level.
+- If the candidate scored < 50, DECREASE difficulty — ask simpler, more
+  foundational questions to build their confidence.
+- Never ask questions that require 5+ years of industry experience unless the
+  candidate has clearly demonstrated that level in prior answers.
 
 Principles:
-1. Build on the conversation — if a previous answer was weak (low score), 
-   probe deeper with a follow-up on that topic.
+1. Build on the conversation — if a previous answer was weak (low score),
+   probe deeper with an easier follow-up on that topic.
 2. If a previous answer was strong, pivot to a new area not yet covered.
 3. Never repeat a category that has already been explored unless the score was < 50.
 4. Questions must be conversational, specific to THIS candidate's background.
-5. Maintain flow — acknowledge the progression naturally.
+5. Use the candidate's name naturally if provided.
+6. Keep the tone friendly and encouraging — this is a practice interview.
+7. Maintain flow — acknowledge the progression naturally.
 
 Available categories:
 ["Technical Skills", "Problem Solving", "Leadership", "Communication",
@@ -70,6 +80,7 @@ def _build_prompt(req: GenerateNextQuestionRequest) -> str:
     """Compose the user-turn prompt with full conversation context."""
     lines: list[str] = [
         f"JOB TITLE: {req.job_title or 'Not specified'}",
+        f"CANDIDATE: {req.candidate_name or 'Not specified'}",
         f"QUESTION {req.question_number} OF {req.total_questions}",
         f"COVERED CATEGORIES: {', '.join(req.covered_categories) or 'None yet'}",
         "",
@@ -164,7 +175,7 @@ class DynamicQuestionService:
             try:
                 client = genai.Client(api_key=self.settings.google_api_key)
                 response = await client.aio.models.generate_content(
-                    model=GEMINI_MODEL,
+                    model=self.settings.gemini_model,
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         system_instruction=_SYSTEM_PROMPT,

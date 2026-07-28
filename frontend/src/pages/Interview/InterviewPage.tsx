@@ -22,6 +22,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import { AIRAAvatar } from "@/components/avatar/AIRAAvatar";
 import { useAutoInterviewSession } from "@/hooks/useAutoInterviewSession";
+import { useAuth } from "@/hooks/useAuth";
 import { useResumeList } from "@/hooks/useResume";
 import { apiClient } from "@/lib/axios";
 import type { GeneratedQuestion } from "@/services/interview";
@@ -465,7 +466,8 @@ export function InterviewPage() {
   const [hasStarted,   setHasStarted]   = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
 
-  const candidateName = localStorage.getItem("candidate_name") ?? "Candidate";
+  const { user } = useAuth();
+  const candidateName = user?.first_name || user?.username || "Candidate";
 
   // Request camera + mic on mount
   useEffect(() => {
@@ -492,9 +494,12 @@ export function InterviewPage() {
     session,
     isVisionReady,
     isListening,
+    finalTranscript,
+    speechError,
     liveMetrics,
     isSpeaking,
     startInterview,
+    submitCurrentAnswer,
     endInterviewEarly,
   } = useAutoInterviewSession(
     videoRef as React.RefObject<HTMLVideoElement | null>,
@@ -547,10 +552,13 @@ export function InterviewPage() {
   }
 
   // Step 2 & 3: Full-screen interview
-  const currentQ    = session.currentQuestion ?? session.questions[session.currentIndex];
-  const totalQ      = 5;
-  const liveCaption = session.liveCaption;
-  const visionActive = session.phase === "listening";
+  const currentQ      = session.currentQuestion ?? session.questions[session.currentIndex];
+  const totalQ        = Math.max(session.results.length + 1, session.currentIndex + 1);
+  const liveCaption   = session.liveCaption;
+  const visionActive  = session.phase === "listening";
+  // Mic is active if phase=listening AND Speech API confirmed isListening=true
+  const micActive     = session.phase === "listening" && isListening;
+  const micError      = session.phase === "listening" && !isListening;
 
   return (
     <motion.div
@@ -604,7 +612,7 @@ export function InterviewPage() {
                 );
               })}
               <span className="text-xs text-slate-500 font-mono ml-1">
-                {session.results.length}/{totalQ}
+                Q{session.results.length + (session.isFinished ? 0 : 1)}
               </span>
             </div>
           )}
@@ -885,19 +893,34 @@ export function InterviewPage() {
             exit={{ opacity: 0, y: 10 }}
             className="relative z-10 shrink-0 mx-4 mb-3 rounded-2xl bg-black/60 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden"
           >
-            <div className="absolute inset-0 rounded-2xl border border-emerald-500/30 animate-pulse pointer-events-none" />
+            <div className={`absolute inset-0 rounded-2xl border pointer-events-none ${
+              micError ? "border-red-500/40" : "border-emerald-500/30 animate-pulse"
+            }`} />
             <div className="flex items-center gap-4 px-5 py-4">
-              <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+              <div className={`w-10 h-10 rounded-full border flex items-center justify-center shrink-0 ${
+                micError
+                  ? "bg-red-500/20 border-red-500/40"
+                  : "bg-emerald-500/20 border-emerald-500/40"
+              }`}>
                 <motion.span
-                  animate={{ scale: [1, 1.25, 1] }}
-                  transition={{ duration: 0.8, repeat: Infinity }}
-                  className="material-symbols-outlined text-emerald-400 text-xl"
-                >mic</motion.span>
+                  animate={micActive ? { scale: [1, 1.25, 1] } : { scale: 1 }}
+                  transition={{ duration: 0.8, repeat: micActive ? Infinity : 0 }}
+                  className={`material-symbols-outlined text-xl ${
+                    micError ? "text-red-400" : "text-emerald-400"
+                  }`}
+                >{micError ? "mic_off" : "mic"}</motion.span>
               </div>
               <div className="flex-1 min-w-0">
-                {liveCaption ? (
+                {micError ? (
+                  <div>
+                    <p className="text-sm text-red-400 font-medium">Microphone not active</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Check browser mic permissions and refresh the page
+                    </p>
+                  </div>
+                ) : (liveCaption || finalTranscript) ? (
                   <>
-                    <p className="text-sm text-white leading-relaxed">{liveCaption}</p>
+                    <p className="text-sm text-white leading-relaxed">{liveCaption || finalTranscript}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <div className="flex items-end gap-0.5">
                         {[0, 0.12, 0.24].map((d, i) => (
@@ -906,9 +929,9 @@ export function InterviewPage() {
                             transition={{ duration: 0.6, delay: d, repeat: Infinity }} />
                         ))}
                       </div>
-                      <span className="text-[10px] text-emerald-400/60 font-mono">Transcribing</span>
+                      <span className="text-[10px] text-emerald-400/60 font-mono">Transcribing live</span>
                       <span className="ml-auto text-[10px] text-slate-500 font-mono">
-                        {liveCaption.trim().split(/\s+/).filter(Boolean).length} words · 2.5s silence submits
+                        {(liveCaption || finalTranscript).trim().split(/\s+/).filter(Boolean).length} words · 2.5s silence auto-submits
                       </span>
                     </div>
                   </>

@@ -55,6 +55,7 @@ export interface GenerateQuestionsRequest {
   resume_text?: string;
   job_description?: string;
   job_title?: string;
+  candidate_name?: string;
   num_questions?: number;
 }
 
@@ -97,6 +98,7 @@ export interface GenerateNextQuestionRequest {
   job_title?: string;
   resume_text?: string;
   job_description?: string;
+  candidate_name?: string;
   prior_qa_pairs: PriorQAPair[];
   question_number: number;
   total_questions: number;

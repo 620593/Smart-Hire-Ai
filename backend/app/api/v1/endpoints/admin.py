@@ -282,8 +282,9 @@ async def _check_db(db: AsyncSession) -> ApiStatus:
 
 async def _check_gemini() -> ApiStatus:
     settings = get_settings()
+    svc_name = f"Gemini ({settings.gemini_model})"
     if not settings.google_api_key:
-        return ApiStatus(service="Gemini 2.5 Flash", status="unconfigured",
+        return ApiStatus(service=svc_name, status="unconfigured",
                          detail="GOOGLE_API_KEY not set in .env")
     t0 = asyncio.get_event_loop().time()
     try:
@@ -291,14 +292,14 @@ async def _check_gemini() -> ApiStatus:
         from google.genai import types
         client = genai.Client(api_key=settings.google_api_key)
         await client.aio.models.generate_content(
-            model="gemini-2.5-flash-preview-05-20",
+            model=settings.gemini_model,
             contents="ping",
             config=types.GenerateContentConfig(max_output_tokens=1),
         )
         latency = (asyncio.get_event_loop().time() - t0) * 1000
-        return ApiStatus(service="Gemini 2.5 Flash", status="ok", latency_ms=round(latency, 1))
+        return ApiStatus(service=svc_name, status="ok", latency_ms=round(latency, 1))
     except Exception as exc:
-        return ApiStatus(service="Gemini 2.5 Flash", status="degraded", detail=str(exc)[:120])
+        return ApiStatus(service=svc_name, status="degraded", detail=str(exc)[:120])
 
 
 async def _check_groq() -> ApiStatus:
@@ -397,7 +398,7 @@ async def get_api_key_status(
             name="GOOGLE_API_KEY",
             is_set=bool(google),
             masked_value=_mask_key(google),
-            service="Gemini 2.5 Flash",
+            service=f"Gemini ({settings.gemini_model})",
         ),
         ApiKeyStatus(
             name="GROQ_API_KEY",

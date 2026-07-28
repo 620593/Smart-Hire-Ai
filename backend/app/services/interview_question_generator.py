@@ -26,7 +26,6 @@ from app.schemas.interview import (
 
 logger = logger_factory("app.services.interview_question_generator")
 
-GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"
 GROQ_MODEL   = "llama-3.3-70b-versatile"
 
 # ---------------------------------------------------------------------------
@@ -34,29 +33,37 @@ GROQ_MODEL   = "llama-3.3-70b-versatile"
 # ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = """
-You are a senior technical recruiter and interview expert with 15+ years of
-experience designing targeted interviews for top technology companies.
+You are AIRA, a friendly and encouraging AI interview assistant. You design
+interviews that start with approachable, basic questions and progressively
+increase difficulty based on the candidate's experience level.
 
 Your task: Given a candidate's resume and a job description, generate
-personalized, insightful interview questions that assess:
-1. Technical skills mentioned in the resume vs. job requirements
-2. Relevant past experiences and projects
-3. Behavioral and situational competencies for the role
-4. Career trajectory alignment
+personalized interview questions that assess their fit for the role.
 
-Guidelines:
+DIFFICULTY GUIDELINES:
+- If the resume shows 0-1 years of experience (fresher/student/recent graduate),
+  start with basic introductory and foundational questions.
+- If the resume shows 2-4 years, mix foundational and intermediate questions.
+- If the resume shows 5+ years, include advanced and leadership questions.
+- When in doubt, assume the candidate is a fresher and keep questions simple.
+
+Question Style:
 - Questions must be specific to THIS candidate's background — reference their
-  actual skills, projects, or experience gaps visible in the resume.
-- Mix question types: behavioral (STAR), technical, situational, motivational.
-- Each question needs a realistic 1–2 sentence "tip" for the candidate.
+  actual skills, projects, or experience visible in the resume.
+- Use the candidate's name naturally in 1-2 questions if provided.
+- Mix question types: behavioral (STAR), technical basics, situational, motivational.
+- Each question needs a realistic 1-2 sentence "tip" for the candidate.
 - Assign each question a category from:
   ["Technical Skills", "Problem Solving", "Leadership", "Communication",
    "Adaptability", "Domain Knowledge", "Career Goals", "Collaboration",
    "Project Experience", "Culture Fit"]
-- Questions should be conversational, clear, and not leading.
+- Questions should be conversational, clear, warm, and not intimidating.
+- Start with an easy icebreaker question (e.g., "Tell me about yourself").
 """
 
 _USER_TEMPLATE = """
+CANDIDATE NAME: {candidate_name}
+
 CANDIDATE RESUME:
 {resume_text}
 
@@ -66,7 +73,8 @@ JOB DESCRIPTION:
 JOB TITLE: {job_title}
 
 Generate exactly {num_questions} interview questions tailored to this candidate
-for this specific role.
+for this specific role. Start with easy/basic questions and gradually increase
+difficulty. The first question should always be a simple icebreaker.
 
 Return ONLY a valid JSON array (no markdown, no explanation):
 [
@@ -116,8 +124,9 @@ class InterviewQuestionGeneratorService:
     async def generate(self, request: GenerateQuestionsRequest) -> GeneratedQuestionsResponse:
         """Generate questions using Gemini → Groq fallback."""
         user_prompt = _USER_TEMPLATE.format(
-            resume_text=request.resume_text or "(No resume provided)",
-            job_description=request.job_description or "(No job description provided)",
+            candidate_name=request.candidate_name or "the candidate",
+            resume_text=(request.resume_text or "(No resume provided)")[:3000],
+            job_description=(request.job_description or "(No job description provided)")[:3000],
             job_title=request.job_title or "the role",
             num_questions=request.num_questions,
         )
@@ -127,10 +136,10 @@ class InterviewQuestionGeneratorService:
         # ── Gemini primary ──────────────────────────────────────────────────
         if settings.google_api_key:
             try:
-                logger.info("Generating questions via Gemini %s", GEMINI_MODEL)
+                logger.info("Generating questions via Gemini %s", settings.gemini_model)
                 client = genai.Client(api_key=settings.google_api_key)
                 response = await client.aio.models.generate_content(
-                    model=GEMINI_MODEL,
+                    model=settings.gemini_model,
                     contents=user_prompt,
                     config=types.GenerateContentConfig(
                         system_instruction=_SYSTEM_PROMPT,

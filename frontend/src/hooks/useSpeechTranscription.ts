@@ -1,30 +1,12 @@
 /**
- * useSpeechTranscription — Web Speech API hook for real-time captions.
+ * useSpeechTranscription — Robust Web Speech API hook for real-time captions & transcription.
  *
  * Uses SpeechRecognition (Chromium) in continuous + interim-results mode.
- * Provides a live caption string (shown in the overlay while the user speaks)
- * and accumulates a finalTranscript across multiple recognition segments.
- *
- * KEY BUG FIX (multi-question transcription):
- *   The onend auto-restart handler previously only checked `isListeningRef.current`.
- *   After Q1 stopListening() → Q2 startListening(), the stale Q1 rec.onend would
- *   fire AFTER Q2's startListening() set isListeningRef=true. Seeing it true, the
- *   OLD recognition restarted and competed with the new one — Chrome kills both,
- *   leaving the user with a mic that shows "Listening" but transcribes nothing.
- *
- *   FIX: onend checks `recognitionRef.current === recognition` to ensure only
- *   the CURRENTLY ACTIVE instance auto-restarts. Stale instances are silently dropped.
- *
- *   Also: stopListening() now nulls recognitionRef BEFORE calling abort() so the
- *   abort-triggered onend immediately sees a stale ref and does not restart.
+ * Canonical implementation: Parses event.results from 0..length-1 on every onresult event
+ * to guarantee no missed interim text, no duplicate final segments, and instant UI updates.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-
-// ---------------------------------------------------------------------------
-// TypeScript: the Web Speech API is not in the default TS lib.
-// We declare a minimal interface to avoid the compiler errors.
-// ---------------------------------------------------------------------------
 
 interface IWindow extends Window {
   SpeechRecognition?: new () => ISpeechRecognition;
@@ -57,40 +39,30 @@ interface ISpeechRecognition extends EventTarget {
   interimResults: boolean;
   lang: string;
   maxAlternatives: number;
-  onresult: ((event: ISpeechRecognitionEvent) => void) | null;
-  onerror: ((event: ISpeechRecognitionErrorEvent) => void) | null;
-  onend: (() => void) | null;
+  onresult:      ((event: ISpeechRecognitionEvent) => void) | null;
+  onerror:       ((event: ISpeechRecognitionErrorEvent) => void) | null;
+  onend:         (() => void) | null;
+  onaudiostart:  (() => void) | null;
+  onspeechstart: (() => void) | null;
+  onspeechend:   (() => void) | null;
   start(): void;
   stop(): void;
   abort(): void;
 }
 
-// ---------------------------------------------------------------------------
-// Browser compatibility shim
-// ---------------------------------------------------------------------------
-
-const iwindow: IWindow = typeof window !== "undefined" ? (window as IWindow) : ({} as IWindow);
+const iwindow: IWindow =
+  typeof window !== "undefined" ? (window as IWindow) : ({} as IWindow);
 const SpeechRecognitionCtor: ((new () => ISpeechRecognition) | undefined) =
   iwindow.SpeechRecognition ?? iwindow.webkitSpeechRecognition;
 
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
-
 export interface UseSpeechTranscriptionReturn {
-  /** True if the browser supports the Web Speech API. */
   isSupported: boolean;
-  /** True while recognition is actively running. */
   isListening: boolean;
-  /** Real-time interim caption shown while the user is speaking. */
   liveCaption: string;
-  /** Full accumulated final transcript for the current session. */
   finalTranscript: string;
-  /** Start recognition (idempotent). */
+  speechError: string | null;
   startListening: () => void;
-  /** Stop recognition and return the final transcript. */
   stopListening: () => string;
-  /** Clear the accumulated transcript (call before each question). */
   resetTranscript: () => void;
 }
 
@@ -100,64 +72,93 @@ export function useSpeechTranscription(): UseSpeechTranscriptionReturn {
   const [isListening,     setIsListening]     = useState(false);
   const [liveCaption,     setLiveCaption]     = useState("");
   const [finalTranscript, setFinalTranscript] = useState("");
+  const [speechError,     setSpeechError]     = useState<string | null>(null);
 
   const recognitionRef     = useRef<ISpeechRecognition | null>(null);
-  const finalTranscriptRef = useRef("");   // sync copy for synchronous reads
+  const finalTranscriptRef = useRef("");
+  const lastLiveCaptionRef = useRef("");
   const isListeningRef     = useRef(false);
 
-  // ── Initialise a fresh recognition instance ──────────────────────────────
-  //
-  // CRITICAL: The onend handler uses `recognitionRef.current === recognition`
-  // to check whether THIS instance is still the active one before restarting.
-  // Without this guard, a stale Q(n-1) instance fires onend after Q(n)'s
-  // startListening() has set isListeningRef=true, causing the old instance to
-  // restart and compete with the new one — Chrome kills both → no transcription.
-  //
   const initRecognition = useCallback((): ISpeechRecognition | null => {
     if (!SpeechRecognitionCtor) return null;
 
     const recognition = new SpeechRecognitionCtor();
-    recognition.continuous     = true;
-    recognition.interimResults = true;
-    recognition.lang           = "en-US";
+    recognition.continuous      = true;
+    recognition.interimResults  = true;
+    recognition.lang            = "en-US";
     recognition.maxAlternatives = 1;
 
+    recognition.onaudiostart = () => {
+      if (recognitionRef.current !== recognition) return;
+      console.log("[Speech] Mic audio stream started ✓");
+      setSpeechError(null);
+    };
+
+    recognition.onspeechstart = () => {
+      if (recognitionRef.current !== recognition) return;
+      console.log("[Speech] Voice activity detected ✓");
+    };
+
+    // ── CANONICAL ONRESULT PARSER ──
     recognition.onresult = (event: ISpeechRecognitionEvent) => {
-      // Only process results from the currently-active recognition
       if (recognitionRef.current !== recognition) return;
 
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscriptRef.current += " " + text;
-          setFinalTranscript(finalTranscriptRef.current.trim());
+      let finalStr = "";
+      let interimStr = "";
+
+      for (let i = 0; i < event.results.length; i++) {
+        const res = event.results[i];
+        const text = res[0]?.transcript || "";
+        if (res.isFinal) {
+          finalStr += text + " ";
         } else {
-          interim += text;
+          interimStr += text + " ";
         }
       }
-      // Show accumulated final + current interim so caption never goes blank
-      const combined = (finalTranscriptRef.current + " " + interim).trim();
-      setLiveCaption(combined || "");
+
+      const cleanFinal = finalStr.trim();
+      const combined = (cleanFinal + " " + interimStr).trim();
+
+      finalTranscriptRef.current = cleanFinal;
+      lastLiveCaptionRef.current = combined;
+
+      setFinalTranscript(cleanFinal);
+      setLiveCaption(combined);
+
+      if (combined) {
+        console.log("[Speech] Live caption updated:", combined);
+      }
     };
 
     recognition.onerror = (event: ISpeechRecognitionErrorEvent) => {
-      // Only handle errors from the currently-active recognition
       if (recognitionRef.current !== recognition) return;
-      // "no-speech" is not a real error — just silence
+
       if (event.error === "no-speech") return;
-      console.warn("[useSpeechTranscription] Recognition error:", event.error);
+      if (event.error === "aborted") return;
+
+      console.warn("[Speech] Error event:", event.error);
+
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        setSpeechError("Microphone permission denied. Check browser settings.");
+        setIsListening(false);
+        isListeningRef.current = false;
+      } else if (event.error === "audio-capture") {
+        setSpeechError("No microphone detected or mic is in use by another app.");
+        setIsListening(false);
+        isListeningRef.current = false;
+      } else if (event.error === "network") {
+        console.warn("[Speech] Network issue contacting speech service.");
+      }
     };
 
     recognition.onend = () => {
-      // KEY FIX: Only auto-restart if THIS instance is still the active one.
-      // Stale instances (from previous questions) must NOT restart — they would
-      // compete with the new instance and break transcription for all subsequent Qs.
+      console.log("[Speech] Instance ended");
       if (isListeningRef.current && recognitionRef.current === recognition) {
         try {
           recognition.start();
-        } catch {
-          // Already started — ignore
+          console.log("[Speech] Auto-restarted recognition after onend");
+        } catch (err) {
+          console.warn("[Speech] Restart failed:", err);
         }
       }
     };
@@ -165,21 +166,26 @@ export function useSpeechTranscription(): UseSpeechTranscriptionReturn {
     return recognition;
   }, []);
 
-  // ── startListening ───────────────────────────────────────────────────────
   const startListening = useCallback(() => {
-    if (!isSupported) return;
-
-    // If somehow called while already listening, stop the old instance first
-    // so we don't end up with two competing recognitions
-    if (recognitionRef.current) {
-      const old = recognitionRef.current;
-      recognitionRef.current = null; // null BEFORE abort so onend doesn't restart
-      try { old.abort(); } catch { /* ignore */ }
+    if (!isSupported) {
+      setSpeechError("Web Speech API is not supported in this browser. Please use Chrome or Edge.");
+      return;
     }
 
-    // Only skip if isListeningRef says we're active AND we have an instance
-    // (the above block handles the "already have one" case, so just guard flag)
-    isListeningRef.current = false; // reset so we can proceed
+    // Defensive cleanup if called twice — abort existing instance before creating new one
+    if (recognitionRef.current) {
+      const existing = recognitionRef.current;
+      recognitionRef.current = null; // null reference FIRST so onend won't restart
+      try {
+        existing.abort();
+      } catch {}
+    }
+
+    setSpeechError(null);
+    finalTranscriptRef.current = "";
+    lastLiveCaptionRef.current = "";
+    setFinalTranscript("");
+    setLiveCaption("");
 
     const rec = initRecognition();
     if (!rec) return;
@@ -187,58 +193,54 @@ export function useSpeechTranscription(): UseSpeechTranscriptionReturn {
     recognitionRef.current = rec;
     isListeningRef.current = true;
     setIsListening(true);
-    setLiveCaption("");
 
     try {
       rec.start();
-      console.log("[Speech] Recognition started for new question");
+      console.log("[Speech] Recognition started for new question ✓");
     } catch (e) {
-      console.error("[Speech] Failed to start recognition:", e);
+      console.error("[Speech] start() error:", e);
+      setTimeout(() => {
+        if (recognitionRef.current === rec) {
+          try { rec.start(); } catch {}
+        }
+      }, 100);
     }
   }, [isSupported, initRecognition]);
 
-  // ── stopListening ────────────────────────────────────────────────────────
   const stopListening = useCallback((): string => {
     isListeningRef.current = false;
     setIsListening(false);
-    setLiveCaption("");
 
-    // Null recognitionRef BEFORE calling abort() so the abort-triggered
-    // onend immediately sees recognitionRef.current !== recognition and
-    // does not attempt to restart this instance.
     const rec = recognitionRef.current;
+    // Null reference FIRST so any abort/stop-triggered onend immediately sees stale ref & exits silently
     recognitionRef.current = null;
 
     if (rec) {
       try {
-        // abort() discards pending audio — more immediate than stop()
-        // which would process remaining audio and fire late onresult events
-        // that could corrupt the next question's transcript.
-        rec.abort();
-      } catch {
-        // Already stopped — ignore
-      }
+        rec.stop();
+      } catch {}
     }
 
-    console.log("[Speech] Stopped. Transcript:", finalTranscriptRef.current.trim().slice(0, 80));
-    return finalTranscriptRef.current.trim();
+    const result = (finalTranscriptRef.current || lastLiveCaptionRef.current).trim();
+    console.log("[Speech] Stopped listening. Final result:", result);
+    return result;
   }, []);
 
-  // ── resetTranscript ──────────────────────────────────────────────────────
   const resetTranscript = useCallback(() => {
     finalTranscriptRef.current = "";
+    lastLiveCaptionRef.current = "";
     setFinalTranscript("");
     setLiveCaption("");
+    setSpeechError(null);
   }, []);
 
-  // ── Cleanup on unmount ───────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       isListeningRef.current = false;
-      const rec = recognitionRef.current;
-      recognitionRef.current = null;
-      if (rec) {
-        try { rec.abort(); } catch { /* ignore */ }
+      if (recognitionRef.current) {
+        const rec = recognitionRef.current;
+        recognitionRef.current = null;
+        try { rec.abort(); } catch {}
       }
     };
   }, []);
@@ -248,6 +250,7 @@ export function useSpeechTranscription(): UseSpeechTranscriptionReturn {
     isListening,
     liveCaption,
     finalTranscript,
+    speechError,
     startListening,
     stopListening,
     resetTranscript,

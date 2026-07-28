@@ -187,6 +187,7 @@ class InterviewFinalizeResponse(BaseModel):
 class GenerateQuestionsRequest(BaseModel):
     """Request to generate personalized interview questions."""
 
+    candidate_name: str = Field(default="", max_length=200, description="Candidate's name for personalized questions.")
     resume_text: str = Field(
         default="",
         max_length=20_000,
@@ -242,6 +243,7 @@ class PriorQAPair(BaseModel):
 class GenerateNextQuestionRequest(BaseModel):
     """Request to generate the next contextual follow-up question during an interview."""
 
+    candidate_name: str = Field(default="", max_length=200, description="Candidate's name for personalized questions.")
     job_title: str = Field(default="", max_length=200)
     resume_text: str = Field(default="", max_length=20_000)
     job_description: str = Field(default="", max_length=10_000)

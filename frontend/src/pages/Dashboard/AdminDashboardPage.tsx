@@ -91,7 +91,7 @@ function OverviewTab({ stats, loading }: { stats: PlatformStats | null; loading:
         {[
           { icon: "how_to_reg",  title: "Recruiter Approvals",   body: "Review and approve new recruiter accounts waiting for access.",              tab: 1, cta: "Review Now",   color: "border-amber-500/30  bg-amber-500/5"  },
           { icon: "manage_accounts", title: "User Management",   body: "View, activate, or deactivate any user account on the platform.",            tab: 2, cta: "Manage Users", color: "border-primary/30    bg-primary/5"    },
-          { icon: "monitor_heart", title: "System Health",       body: "Live status of PostgreSQL, Gemini 2.5 Flash, and Groq llama-3.3-70b.",       tab: 3, cta: "Check Health", color: "border-emerald-500/30 bg-emerald-500/5" },
+          { icon: "monitor_heart", title: "System Health",       body: "Live status of PostgreSQL, Gemini 3.1 Flash-Lite, and Groq llama-3.3-70b.",       tab: 3, cta: "Check Health", color: "border-emerald-500/30 bg-emerald-500/5" },
         ].map(({ icon, title, body, cta, color }) => (
           <motion.div
             key={title}
@@ -473,7 +473,7 @@ function SystemHealthTab() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {health ? [
           { label: "PostgreSQL Database",  data: health.database },
-          { label: "Gemini 2.5 Flash",     data: health.gemini   },
+          { label: health.gemini.service || "Gemini 3.1 Flash-Lite", data: health.gemini },
           { label: "Groq llama-3.3-70b",   data: health.groq     },
         ].map(({ label, data }) => (
           <motion.div key={label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
@@ -519,7 +519,7 @@ function SystemHealthTab() {
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[
-            { key: "GOOGLE_API_KEY",  svc: "Gemini 2.5 Flash",   url: "https://aistudio.google.com/app/apikey" },
+            { key: "GOOGLE_API_KEY",  svc: "Gemini 3.1 Flash-Lite",   url: "https://aistudio.google.com/app/apikey" },
             { key: "GROQ_API_KEY",    svc: "Groq llama-3.3-70b", url: "https://console.groq.com/keys" },
             { key: "DATABASE_*",      svc: "PostgreSQL",          url: "" },
           ].map(({ key, svc, url }) => (
@@ -658,7 +658,7 @@ function ApiKeysTab() {
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
               <span className="material-symbols-outlined text-blue-400 text-sm">psychology</span>
-              GOOGLE_API_KEY — Gemini 2.5 Flash
+              GOOGLE_API_KEY — Gemini 3.1 Flash-Lite
             </label>
             <div className="flex gap-2">
               <input

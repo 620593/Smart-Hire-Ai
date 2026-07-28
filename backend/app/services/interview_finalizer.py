@@ -26,7 +26,6 @@ from app.schemas.interview import (
     WeakQuestion,
 )
 from app.services.interview_analysis import (
-    GEMINI_MODEL,
     GROQ_MODEL,
     _extract_json,
 )
@@ -137,7 +136,7 @@ def _parse_finalize_result(raw: str, source: str) -> InterviewFinalizeResult:
 class InterviewFinalizerService:
     """Aggregate all question results and produce a holistic interview report.
 
-    Uses Gemini 2.5 Flash as primary LLM; falls back to Groq llama-3.3-70b
+    Uses Gemini as primary LLM; falls back to Groq llama-3.3-70b
     automatically on any Gemini error.
     """
 
@@ -171,7 +170,7 @@ class InterviewFinalizerService:
     # ------------------------------------------------------------------
 
     async def _call_gemini(self, prompt: str) -> InterviewFinalizeResult:
-        """Call Gemini 2.5 Flash for holistic evaluation.
+        """Call Gemini for holistic evaluation.
 
         Raises:
             Exception: Any Gemini SDK or HTTP error (caller catches and falls back).
@@ -183,7 +182,7 @@ class InterviewFinalizerService:
         combined = f"{_FINALIZE_SYSTEM_PROMPT}\n\n{prompt}"
 
         response = await client.aio.models.generate_content(
-            model=GEMINI_MODEL,
+            model=self.settings.gemini_model,
             contents=combined,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -266,14 +265,11 @@ class InterviewFinalizerService:
                 "Interview finalised via Gemini | overall_score=%d | recommendation=%s",
                 final_result.overall_score, final_result.recommendation,
             )
-        except HTTPException:
-            raise  # 422 parse errors — don't retry
         except Exception as gemini_err:
             logger.warning(
                 "Gemini unavailable for finalize (%s) — falling back to Groq %s",
                 gemini_err, GROQ_MODEL,
             )
-            # --- fallback: Groq ---
             final_result = await self._call_groq(prompt)
             logger.info(
                 "Interview finalised via Groq fallback | overall_score=%d | recommendation=%s",

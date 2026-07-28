@@ -28,9 +28,8 @@ from app.schemas.interview import (
 logger = logger_factory("app.services.interview_analysis")
 
 # ---------------------------------------------------------------------------
-# Model identifiers — change these constants to switch variants
+# Model identifiers — change these constants or set GEMINI_MODEL in .env
 # ---------------------------------------------------------------------------
-GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"
 GROQ_MODEL   = "llama-3.3-70b-versatile"
 
 # ---------------------------------------------------------------------------
@@ -164,7 +163,7 @@ class InterviewAnalysisService:
     # ------------------------------------------------------------------
 
     async def _call_gemini(self, prompt: str) -> QuestionAnalysisResult:
-        """Call Gemini 2.5 Flash with JSON output mode.
+        """Call Gemini with JSON output mode.
 
         Raises:
             Exception: Any Gemini SDK or HTTP error (caller catches and falls back).
@@ -176,7 +175,7 @@ class InterviewAnalysisService:
         combined = f"{_SYSTEM_PROMPT}\n\n{prompt}"
 
         response = await client.aio.models.generate_content(
-            model=GEMINI_MODEL,
+            model=self.settings.gemini_model,
             contents=combined,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -259,14 +258,11 @@ class InterviewAnalysisService:
                 "Q%d analysis via Gemini | overall_score=%d",
                 req.question_index, result.overall_score,
             )
-        except HTTPException:
-            raise  # 422 parse errors — don't retry, surface immediately
         except Exception as gemini_err:
             logger.warning(
                 "Gemini unavailable for Q%d (%s) — falling back to Groq %s",
                 req.question_index, gemini_err, GROQ_MODEL,
             )
-            # --- fallback: Groq ---
             result = await self._call_groq(prompt)
             logger.info(
                 "Q%d analysis via Groq fallback | overall_score=%d",

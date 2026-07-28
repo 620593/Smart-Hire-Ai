@@ -49,13 +49,13 @@ import type { GeneratedQuestion } from "@/services/interview";
 // ---------------------------------------------------------------------------
 
 const INTERVIEW_DURATION_SEC  = 10 * 60;  // 600 seconds
-const SILENCE_AFTER_SPEECH_MS = 2500;
+const SILENCE_AFTER_SPEECH_MS = 2500;     // 2.5 seconds of silence triggers auto-submission
 const NO_SPEECH_TIMEOUT_MS    = 9000;
-// Removed: MIN_WORDS_BEFORE_NEXT — any answer is accepted after 2.5s silence
-// Removed: MAX_QUESTIONS (5) — questions continue until time expires or user ends
+const EXPECTED_QUESTIONS     = 10;  // Hint for LLM total_questions param
 
 // Max ms to wait for LLM-1 before using fallback question
-const Q_GEN_TIMEOUT_MS        = 5000;
+// 15s allows Gemini → Groq fallback chain to complete (Gemini 404 + Groq ~3–5s)
+const Q_GEN_TIMEOUT_MS        = 15000;
 
 const REPEAT_TRIGGERS = [
   "repeat", "again", "didn't understand", "don't understand",
@@ -126,6 +126,8 @@ export interface UseAutoInterviewSessionReturn {
   session:          AutoSessionState;
   isVisionReady:    boolean;
   isListening:      boolean;
+  finalTranscript:  string;
+  speechError:      string | null;
   liveMetrics:      VisionMetrics;
   isSpeaking:       boolean;
   startInterview: (
@@ -135,6 +137,7 @@ export interface UseAutoInterviewSessionReturn {
     jobDescription?: string,
     onFinished?:    (report: InterviewFinalizeResponse | null) => void,
   ) => Promise<void>;
+  submitCurrentAnswer: (overrideTranscript?: string) => Promise<void>;
   endInterviewEarly: () => Promise<InterviewFinalizeResponse | null>;
 }
 
@@ -208,7 +211,7 @@ export function useAutoInterviewSession(
 
   // Stable cross-refs to break circular async deps
   const askQuestionRef  = useRef<((idx: number, q: GeneratedQuestion) => Promise<void>) | undefined>(undefined);
-  const submitAnswerRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const submitAnswerRef = useRef<((overrideTranscript?: string) => Promise<void>) | undefined>(undefined);
 
   useEffect(() => { sessionRef.current = session; }, [session]);
 
@@ -279,9 +282,10 @@ export function useAutoInterviewSession(
         job_title:          jobTitleRef.current,
         resume_text:        resumeTextRef.current,
         job_description:    jobDescRef.current,
+        candidate_name:     candidateNameRef.current,
         prior_qa_pairs:     priorQAPairs,
         question_number:    questionNumber,
-        total_questions:    MAX_QUESTIONS,
+        total_questions:    EXPECTED_QUESTIONS,
         covered_categories: coveredCategories,
       }).then((res): GeneratedQuestion => ({
         text:     res.question_text,
@@ -361,14 +365,21 @@ export function useAutoInterviewSession(
   useLayoutEffect(() => { askQuestionRef.current = askQuestion; }, [askQuestion]);
 
   // ------------ SUBMIT ANSWER (LLM-2 evaluate + chain to next Q) -------
-  const submitCurrentAnswer = useCallback(async () => {
+  const submitCurrentAnswer = useCallback(async (overrideTranscript?: string) => {
     if (processingRef.current) return;
     processingRef.current = true;
     clearTimers();
 
-    const transcript    = speech.stopListening();
-    capturedTxRef.current = transcript;
+    let transcript = (overrideTranscript !== undefined ? overrideTranscript : speech.stopListening()).trim();
     const visionMetrics = vision.stopCapture();
+
+    if (overrideTranscript === undefined) {
+      await new Promise<void>((r) => setTimeout(r, 200));
+      if (speech.finalTranscript && speech.finalTranscript.length > transcript.length) {
+        transcript = speech.finalTranscript.trim();
+      }
+    }
+    capturedTxRef.current = transcript;
 
     const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length;
     const s         = sessionRef.current;
@@ -376,9 +387,10 @@ export function useAutoInterviewSession(
 
     if (!currentQ) { processingRef.current = false; return; }
 
-    // No word-count minimum: accept any answer after 2.5s silence.
+    // No word-count minimum: accept any answer after silence timeout.
     // (wordCount kept for logging only)
-    console.log(`[INTERVIEW] Q${s.currentIndex + 1} answer: ${wordCount} words`);
+    console.log(`[INTERVIEW] Q${s.currentIndex + 1} answer: ${wordCount} words | "${transcript.slice(0, 100)}"`);
+
 
     // LLM-2: Evaluate answer
     setAira("thinking", THINKING);
@@ -445,14 +457,13 @@ export function useAutoInterviewSession(
 
   useLayoutEffect(() => { submitAnswerRef.current = submitCurrentAnswer; }, [submitCurrentAnswer]);
 
-  // ------------ Silence detection -------------------------------------
+  // ------------ Silence detection (2.5s auto-submit) ---------------------
   useEffect(() => {
     if (session.phase !== "listening") return;
-    const caption = speech.liveCaption;
+    const caption = speech.liveCaption.trim();
     if (caption === lastCaptionRef.current) return;
-    const prev = lastCaptionRef.current;
     lastCaptionRef.current = caption;
-    if (!caption && !prev) return;
+    if (!caption) return;
 
     const lower = caption.toLowerCase();
     if (REPEAT_TRIGGERS.some((t) => lower.includes(t))) {
@@ -463,13 +474,20 @@ export function useAutoInterviewSession(
     }
 
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
     silenceTimerRef.current = setTimeout(() => {
-      if (sessionRef.current.phase === "listening" && !processingRef.current) {
-        void submitAnswerRef.current?.();
-      }
+      const s = sessionRef.current;
+      if (s.phase !== "listening" || processingRef.current) return;
+      if (isSpeaking) return;
+
+      const answerToSubmit = speech.liveCaption.trim() || speech.finalTranscript.trim();
+      if (!answerToSubmit) return;
+
+      console.log("[SilenceTimer] 2.5s silence detected — submitting answer automatically:", answerToSubmit);
+      void submitAnswerRef.current?.(answerToSubmit);
     }, SILENCE_AFTER_SPEECH_MS);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [speech.liveCaption, session.phase]);
+  }, [speech.liveCaption, session.phase, isSpeaking]);
 
   // ------------ Finalize interview -----------------------------------
   const doFinalize = useCallback(
@@ -571,7 +589,7 @@ export function useAutoInterviewSession(
       }));
       setAira("thinking", "Preparing first question…");
 
-      // ④ Fetch Q1 — race against 5s timeout, use fallback if backend slow
+      // ④ Fetch Q1 — race against 15s timeout, use fallback if backend slow
       let firstQ: GeneratedQuestion;
       try {
         const fallback = seedQ1 ?? FALLBACK_QUESTIONS[0];
@@ -607,12 +625,15 @@ export function useAutoInterviewSession(
   );
 
   return {
-    session:       { ...session, liveCaption: speech.liveCaption },
-    isVisionReady: vision.isInitialized,
-    isListening:   speech.isListening,
-    liveMetrics:   vision.liveMetrics,
+    session:             { ...session, liveCaption: speech.liveCaption },
+    isVisionReady:       vision.isInitialized,
+    isListening:         speech.isListening,
+    finalTranscript:     speech.finalTranscript,
+    speechError:         speech.speechError,
+    liveMetrics:         vision.liveMetrics,
     isSpeaking,
     startInterview,
+    submitCurrentAnswer,
     endInterviewEarly,
   };
 }
