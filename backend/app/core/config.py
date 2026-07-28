@@ -5,19 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy.engine import URL
-
-from app.core.constants import (
-    APP_ENV,
-    APP_NAME,
-    APP_VERSION,
-    API_V1_PREFIX,
-    DEFAULT_HOST,
-    DEFAULT_LOG_LEVEL,
-    DEFAULT_PORT,
-)
+from pydantic import Field, field_validator
 
 
 class Settings(BaseSettings):
@@ -32,9 +20,17 @@ class Settings(BaseSettings):
     port: int = Field(default=DEFAULT_PORT, alias="PORT")
     log_level: str = Field(default=DEFAULT_LOG_LEVEL, alias="LOG_LEVEL")
     cors_allowed_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:5173"],
+        default_factory=lambda: ["http://localhost:5173", "*"],
         alias="CORS_ALLOWED_ORIGINS",
     )
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Any) -> Any:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",") if i.strip()]
+        return v
+
     database_host: str = Field(default="localhost", alias="DATABASE_HOST")
     database_port: int = Field(default=5432, alias="DATABASE_PORT")
     database_user: str = Field(default="postgres", alias="DATABASE_USER")
@@ -69,16 +65,38 @@ class Settings(BaseSettings):
     )
 
     def model_post_init(self, __context: Any) -> None:
-        """Derive the PostgreSQL connection URL from the individual settings."""
+        """Derive or normalize the PostgreSQL connection URL."""
 
-        self.database_url = URL.create(
-            drivername="postgresql+asyncpg",
-            username=self.database_user,
-            password=self.database_password,
-            host=self.database_host,
-            port=self.database_port,
-            database=self.database_name,
-        ).render_as_string(hide_password=False)
+        if self.database_url and self.database_url.strip():
+            url_str = self.database_url.strip()
+            if url_str.startswith("postgresql://"):
+                url_str = "postgresql+asyncpg://" + url_str[len("postgresql://"):]
+            elif url_str.startswith("postgres://"):
+                url_str = "postgresql+asyncpg://" + url_str[len("postgres://"):]
+
+            # Handle unencoded '@' in password if multiple '@' symbols exist in URL
+            if url_str.count("@") > 1:
+                scheme_part, rest = url_str.split("://", 1)
+                last_at_idx = rest.rfind("@")
+                userinfo = rest[:last_at_idx]
+                hostinfo = rest[last_at_idx:]
+                if ":" in userinfo:
+                    user, pwd = userinfo.split(":", 1)
+                    pwd_encoded = pwd.replace("@", "%40")
+                    url_str = f"{scheme_part}://{user}:{pwd_encoded}{hostinfo}"
+
+            self.database_url = url_str
+        else:
+            self.database_url = URL.create(
+                drivername="postgresql+asyncpg",
+                username=self.database_user,
+                password=self.database_password,
+                host=self.database_host,
+                port=self.database_port,
+                database=self.database_name,
+            ).render_as_string(hide_password=False)
+
+
 
 
 @lru_cache(maxsize=1)

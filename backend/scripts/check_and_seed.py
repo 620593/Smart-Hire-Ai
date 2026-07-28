@@ -9,11 +9,14 @@ from app.models.role import Role
 from app.core.security.password import PasswordManager
 
 
+from app.db.database import get_engine, get_session_factory
+
+
 async def main() -> None:
     # 1. Check tables exist
-    engine = create_async_engine(
-        "postgresql+asyncpg://postgres:1234@localhost:5432/smarthire_ai"
-    )
+    engine = get_engine()
+
+
     async with engine.connect() as conn:
         result = await conn.execute(
             text(
