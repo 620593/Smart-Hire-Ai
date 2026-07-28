@@ -6,9 +6,22 @@ from functools import lru_cache
 from typing import Any
 
 from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
+
+from app.core.constants import (
+    APP_ENV,
+    APP_NAME,
+    APP_VERSION,
+    API_V1_PREFIX,
+    DEFAULT_HOST,
+    DEFAULT_LOG_LEVEL,
+    DEFAULT_PORT,
+)
 
 
 class Settings(BaseSettings):
+
     """Application settings loaded from environment variables."""
 
     app_name: str = Field(default=APP_NAME, alias="APP_NAME")
