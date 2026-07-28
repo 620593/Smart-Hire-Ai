@@ -48,7 +48,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const currentUser = await AuthService.getCurrentUser();
       setUser(currentUser);
     } catch (err: any) {
-      const apiMessage = err.response?.data?.error?.message || "Invalid credentials.";
+      const apiMessage =
+        err.response?.data?.detail ||
+        err.response?.data?.error?.message ||
+        err.response?.data?.message ||
+        (err.message === "Network Error" ? "Unable to connect to backend server. Please check CORS & network." : null) ||
+        "Invalid credentials.";
       setError(apiMessage);
       throw err;
     }
@@ -66,7 +71,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const currentUser = await AuthService.getCurrentUser();
       setUser(currentUser);
     } catch (err: any) {
-      const apiMessage = err.response?.data?.error?.message || "Registration failed.";
+      const apiMessage =
+        err.response?.data?.detail ||
+        err.response?.data?.error?.message ||
+        err.response?.data?.message ||
+        "Registration failed.";
       setError(apiMessage);
       throw err;
     }
@@ -88,13 +97,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initializeSession = async () => {
       try {
-        // Attempt to refresh the access token on startup
-        await AuthService.refresh();
+        // Attempt to fetch current user directly using stored access token
         const currentUser = await AuthService.getCurrentUser();
         setUser(currentUser);
       } catch (err) {
-        // Silent failure if no session exists
-        setUser(null);
+        try {
+          // Fallback: try refreshing access token if expired
+          await AuthService.refresh();
+          const currentUser = await AuthService.getCurrentUser();
+          setUser(currentUser);
+        } catch {
+          // Silent failure if no valid session exists
+          setUser(null);
+        }
       } finally {
         setIsInitialized(true);
       }
@@ -102,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initializeSession();
   }, []);
+
 
   return (
     <AuthContext.Provider

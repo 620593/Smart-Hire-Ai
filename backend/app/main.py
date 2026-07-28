@@ -55,17 +55,25 @@ def create_app() -> FastAPI:
         return response
 
     # ── CORS — must be added LAST so it is the outermost middleware ──
-    # Starlette processes middleware in LIFO order: the last-added middleware
-    # runs first. CORSMiddleware handles OPTIONS preflight and adds CORS
-    # headers before any custom middleware sees the request.
+    raw_origins = settings.cors_allowed_origins
+    if isinstance(raw_origins, (list, tuple, set)):
+        origins_list = [str(o) for o in raw_origins]
+    else:
+        origins_list = [str(raw_origins)]
+
+    # When allow_credentials=True, W3C spec forbids wildcard '*'.
+    # Use allow_origin_regex to dynamically echo requesting origin for Render & localhost.
+    has_wildcard = "*" in origins_list
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_allowed_origins,
+        allow_origins=[] if has_wildcard else origins_list,
+        allow_origin_regex=r"https://.*\.onrender\.com|http://localhost:\d+|http://127\.0\.0\.1:\d+" if has_wildcard else None,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=["*"],
     )
+
 
     application.include_router(create_api_router(settings.api_v1_prefix))
     application.include_router(root_router)
