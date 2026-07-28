@@ -156,6 +156,7 @@ export interface UseAutoInterviewSessionReturn {
     durationSec?:   number,
     onFinished?:    (report: InterviewFinalizeResponse | null) => void,
   ) => Promise<void>;
+  setInterviewDuration: (durationSec: number) => void;
   submitCurrentAnswer: (overrideTranscript?: string) => Promise<void>;
   endInterviewEarly: () => Promise<InterviewFinalizeResponse | null>;
 }
@@ -250,7 +251,13 @@ export function useAutoInterviewSession(
   // ------------ safe state setter --------------------------------------
   const safeSet = useCallback(
     (updater: (prev: AutoSessionState) => AutoSessionState) => {
-      if (isMountedRef.current) setSession(updater);
+      if (isMountedRef.current) {
+        setSession((prev) => {
+          const next = updater(prev);
+          sessionRef.current = next;
+          return next;
+        });
+      }
     },
     []
   );
@@ -269,17 +276,18 @@ export function useAutoInterviewSession(
     noAnswerTimerRef.current = null;
   }, []);
 
-  // ------------ 10-minute countdown timer ------------------------------
+  // ------------ Countdown timer ------------------------------
   const startTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     const id = setInterval(() => {
       setSession((p) => {           // use setSession directly — no isMountedRef guard needed for intervals
         const next = p.timeRemainingSec - 1;
+        const updated = next <= 0 ? { ...p, timeRemainingSec: 0 } : { ...p, timeRemainingSec: next };
+        sessionRef.current = updated;
         if (next <= 0) {
           clearInterval(id);
-          return { ...p, timeRemainingSec: 0 };
         }
-        return { ...p, timeRemainingSec: next };
+        return updated;
       });
     }, 1000);
     timerRef.current = id;
@@ -705,7 +713,8 @@ export function useAutoInterviewSession(
       timeWarning30Ref.current  = false;
       durationRef.current       = durationSec;
 
-      // Set the initial timer to the chosen duration
+      // Set initial timer to chosen duration synchronously in ref and state
+      sessionRef.current = { ...sessionRef.current, timeRemainingSec: durationSec };
       safeSet((p) => ({ ...p, timeRemainingSec: durationSec }));
 
       // ① Start timer immediately — runs independently in its own interval
@@ -757,6 +766,15 @@ export function useAutoInterviewSession(
     [doFinalize]
   );
 
+  const setInterviewDuration = useCallback(
+    (durationSec: number) => {
+      durationRef.current = durationSec;
+      sessionRef.current = { ...sessionRef.current, timeRemainingSec: durationSec };
+      safeSet((p) => ({ ...p, timeRemainingSec: durationSec }));
+    },
+    [safeSet]
+  );
+
   return {
     session:             { ...session, liveCaption: speech.liveCaption },
     isVisionReady:       vision.isInitialized,
@@ -766,6 +784,7 @@ export function useAutoInterviewSession(
     liveMetrics:         vision.liveMetrics,
     isSpeaking,
     startInterview,
+    setInterviewDuration,
     submitCurrentAnswer,
     endInterviewEarly,
   };

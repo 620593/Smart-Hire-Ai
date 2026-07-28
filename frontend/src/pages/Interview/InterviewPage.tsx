@@ -212,10 +212,11 @@ function LiveVisionPanel({ videoRef, liveMetrics, isActive, permGranted }: LiveV
 // ---------------------------------------------------------------------------
 
 const DURATION_OPTIONS = [
-  { label: "Quick",        value: 300,  desc: "5 min" },
-  { label: "Standard",     value: 600,  desc: "10 min" },
-  { label: "Extended",     value: 900,  desc: "15 min" },
-  { label: "Deep Dive",    value: 1200, desc: "20 min" },
+  { label: "Test",        value: 120,  desc: "2 min" },
+  { label: "Quick",       value: 300,  desc: "5 min" },
+  { label: "Standard",    value: 600,  desc: "10 min" },
+  { label: "Extended",    value: 900,  desc: "15 min" },
+  { label: "Deep Dive",   value: 1200, desc: "20 min" },
   { label: "Full Session", value: 1800, desc: "30 min" },
 ];
 
@@ -539,6 +540,7 @@ export function InterviewPage() {
     liveMetrics,
     isSpeaking,
     startInterview,
+    setInterviewDuration,
     submitCurrentAnswer,
     endInterviewEarly,
   } = useAutoInterviewSession(
@@ -554,10 +556,11 @@ export function InterviewPage() {
       setResumeText(rt);
       setJobDesc(jd);
       setDurationSec(dur);
+      setInterviewDuration(dur);
       setSeedQ1(null);
       setHasSetup(true);
     },
-    []
+    [setInterviewDuration]
   );
 
   // Start interview
