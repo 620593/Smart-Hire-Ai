@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.enums import UserRole
@@ -39,7 +39,7 @@ class UserRepository:
         return result.scalar_one_or_none()
 
     async def find_by_email(self, email: str) -> User | None:
-        """Retrieve a user by their email address.
+        """Retrieve a user by their email address (case-insensitive).
 
         Args:
             email: The email address to look up.
@@ -47,12 +47,13 @@ class UserRepository:
         Returns:
             The user object if found, else None.
         """
-        query = select(User).where(User.email == email)
+        clean_email = email.strip().lower()
+        query = select(User).where(func.lower(User.email) == clean_email)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def find_by_username(self, username: str) -> User | None:
-        """Retrieve a user by their username.
+        """Retrieve a user by their username (case-insensitive).
 
         Args:
             username: The username to look up.
@@ -60,7 +61,8 @@ class UserRepository:
         Returns:
             The user object if found, else None.
         """
-        query = select(User).where(User.username == username)
+        clean_username = username.strip().lower()
+        query = select(User).where(func.lower(User.username) == clean_username)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
