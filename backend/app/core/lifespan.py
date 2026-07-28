@@ -55,6 +55,47 @@ async def _wait_for_db() -> None:
     )
 
 
+def _run_auto_migrations() -> None:
+    """Execute Alembic upgrade head automatically on application startup."""
+    logger = logger_factory("app.lifespan.migrations")
+    try:
+        from alembic.config import Config
+        from alembic import command
+        from pathlib import Path
+
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        alembic_ini = base_dir / "alembic.ini"
+        if alembic_ini.exists():
+            logger.info("Running automatic Alembic migrations (upgrade head)…")
+            alembic_cfg = Config(str(alembic_ini))
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Alembic migrations completed successfully [OK]")
+    except Exception as exc:
+        logger.warning("Automatic Alembic migration notice: %s", exc)
+
+
+async def _seed_initial_roles() -> None:
+    """Ensure default roles (ADMIN, RECRUITER, CANDIDATE) exist in the database."""
+    logger = logger_factory("app.lifespan.roles")
+    try:
+        from app.db.database import get_session_factory
+        from app.db.enums import UserRole
+        from app.models.role import Role
+        from sqlalchemy import select
+
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            for role_name in [UserRole.ADMIN, UserRole.RECRUITER, UserRole.CANDIDATE]:
+                query = select(Role).where(Role.name == role_name)
+                res = await session.execute(query)
+                if not res.scalar_one_or_none():
+                    session.add(Role(name=role_name, description=f"Default {role_name.value} role"))
+                    logger.info("Created missing role: %s", role_name.value)
+            await session.commit()
+    except Exception as exc:
+        logger.warning("Failed to seed initial roles: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage application startup and shutdown lifecycle events.
@@ -74,6 +115,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await _wait_for_db()
 
+    # Automatically apply Alembic migrations and seed roles on startup
+    _run_auto_migrations()
+    await _seed_initial_roles()
+
     logger.info("SmartHire AI Backend ready [OK]")
     yield
-    logger.info("SmartHire AI Backend stopped")
+    logger.info("SmartHire AI Backend stopped")
