@@ -96,8 +96,9 @@ async def _seed_initial_data() -> None:
                     logger.info("Created missing role: %s", role_enum.value)
                 roles_map[role_enum] = role_obj
 
-            # 2. Seed Admin User 'ranjith'
-            user_q = await session.execute(select(User).where(User.username == "ranjith"))
+            # 2. Seed/Sync Admin User 'ranjith'
+            from sqlalchemy import func
+            user_q = await session.execute(select(User).where(func.lower(User.username) == "ranjith"))
             admin_user = user_q.scalar_one_or_none()
             if not admin_user:
                 admin_user = User(
@@ -114,9 +115,15 @@ async def _seed_initial_data() -> None:
                 session.add(admin_user)
                 logger.info("Seeded default admin user 'ranjith'")
             else:
+                admin_user.hashed_password = pm.hash_password("ranjith143")
                 admin_user.is_active = True
                 admin_user.is_verified = True
                 admin_user.is_approved = True
+                # Ensure ADMIN role is linked
+                if not any(r.name == UserRole.ADMIN for r in admin_user.roles):
+                    admin_user.roles.append(roles_map[UserRole.ADMIN])
+                logger.info("Synced default admin user 'ranjith' credentials [ranjith143]")
+
 
             await session.commit()
     except Exception as exc:
