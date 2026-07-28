@@ -48,7 +48,7 @@ import type { GeneratedQuestion } from "@/services/interview";
 // Constants
 // ---------------------------------------------------------------------------
 
-const INTERVIEW_DURATION_SEC  = 10 * 60;  // 600 seconds
+const DEFAULT_DURATION_SEC    = 10 * 60;  // 600 seconds — default if no custom duration
 const SILENCE_AFTER_SPEECH_MS = 2500;     // 2.5 seconds of silence triggers auto-submission
 const NO_SPEECH_TIMEOUT_MS    = 9000;
 const EXPECTED_QUESTIONS     = 10;  // Hint for LLM total_questions param
@@ -56,6 +56,14 @@ const EXPECTED_QUESTIONS     = 10;  // Hint for LLM total_questions param
 // Max ms to wait for LLM-1 before using fallback question
 // 15s allows Gemini → Groq fallback chain to complete (Gemini 404 + Groq ~3–5s)
 const Q_GEN_TIMEOUT_MS        = 15000;
+
+// Timer-awareness: don't ask a new question if less than this many seconds remain.
+// Rationale: LLM generation (3–15s) + TTS (3–10s) + answer time (~20s) ≈ 35–45s min.
+const MIN_TIME_FOR_NEW_QUESTION = 45;
+
+// Follow-up probe constants
+const FOLLOW_UP_THRESHOLD  = 40;   // score below which a follow-up is offered
+const FOLLOW_UP_MIN_WORDS  = 30;   // answers shorter than this also trigger follow-up
 
 const REPEAT_TRIGGERS = [
   "repeat", "again", "didn't understand", "don't understand",
@@ -77,6 +85,16 @@ const NO_ANSWER   = "Take your time, share your answer whenever ready.";
 const TIMEOUT_MSG = "Time's up! Compiling your results now.";
 const DONE_MSG    = "All done! Generating your report now.";
 const GENERATING  = "Preparing your next question.";
+
+// Time warnings
+const TIME_WARNING_60S = "Just a heads up — you have about one minute remaining.";
+const TIME_WARNING_30S = "Thirty seconds left. Let's wrap up your current answer.";
+
+// Follow-up probe
+const FOLLOW_UP_PROBE = "I didn't quite get a complete answer there. Could you explain your answer in a bit more detail?";
+
+// Wrap-up when not enough time for a new question
+const WRAP_UP_MSG = "We're running low on time, so let's wrap things up. Generating your report now.";
 
 // Fallback questions for when the LLM backend is unavailable / slow
 // Fresher-appropriate: clear, approachable, entry-level
@@ -135,6 +153,7 @@ export interface UseAutoInterviewSessionReturn {
     jobTitle?:      string,
     resumeText?:    string,
     jobDescription?: string,
+    durationSec?:   number,
     onFinished?:    (report: InterviewFinalizeResponse | null) => void,
   ) => Promise<void>;
   submitCurrentAnswer: (overrideTranscript?: string) => Promise<void>;
@@ -175,7 +194,7 @@ export function useAutoInterviewSession(
     isProcessing:      false,
     processingMessage: "",
     error:             null,
-    timeRemainingSec:  INTERVIEW_DURATION_SEC,
+    timeRemainingSec:  DEFAULT_DURATION_SEC,
     isFinished:        false,
     airaState:         "greeting",
     airaSubtitle:      "",
@@ -208,6 +227,12 @@ export function useAutoInterviewSession(
   const askedTextsRef     = useRef<string[]>([]);
   const lastCaptionRef    = useRef("");
   const capturedTxRef     = useRef("");
+
+  // Timer-awareness refs
+  const timeoutPendingRef  = useRef(false);  // flag to gracefully wind down instead of hard-cut
+  const timeWarning60Ref   = useRef(false);  // whether 60s warning has been spoken
+  const timeWarning30Ref   = useRef(false);  // whether 30s warning has been spoken
+  const durationRef        = useRef(DEFAULT_DURATION_SEC); // custom duration for this session
 
   // Stable cross-refs to break circular async deps
   const askQuestionRef  = useRef<((idx: number, q: GeneratedQuestion) => Promise<void>) | undefined>(undefined);
@@ -364,131 +389,6 @@ export function useAutoInterviewSession(
   // Sync refs synchronously so they're never undefined on first call
   useLayoutEffect(() => { askQuestionRef.current = askQuestion; }, [askQuestion]);
 
-  // ------------ SUBMIT ANSWER (LLM-2 evaluate + chain to next Q) -------
-  const submitCurrentAnswer = useCallback(async (overrideTranscript?: string) => {
-    if (processingRef.current) return;
-    processingRef.current = true;
-    clearTimers();
-
-    let transcript = (overrideTranscript !== undefined ? overrideTranscript : speech.stopListening()).trim();
-    const visionMetrics = vision.stopCapture();
-
-    if (overrideTranscript === undefined) {
-      await new Promise<void>((r) => setTimeout(r, 200));
-      if (speech.finalTranscript && speech.finalTranscript.length > transcript.length) {
-        transcript = speech.finalTranscript.trim();
-      }
-    }
-    capturedTxRef.current = transcript;
-
-    const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length;
-    const s         = sessionRef.current;
-    const currentQ  = s.currentQuestion ?? s.questions[s.currentIndex];
-
-    if (!currentQ) { processingRef.current = false; return; }
-
-    // No word-count minimum: accept any answer after silence timeout.
-    // (wordCount kept for logging only)
-    console.log(`[INTERVIEW] Q${s.currentIndex + 1} answer: ${wordCount} words | "${transcript.slice(0, 100)}"`);
-
-
-    // LLM-2: Evaluate answer
-    setAira("thinking", THINKING);
-    void speak(THINKING);
-    safeSet((p) => ({
-      ...p,
-      phase:             "processing",
-      isProcessing:      true,
-      processingMessage: "Analysing your answer…",
-      liveCaption:       "",
-    }));
-
-    let analysisResult: QuestionAnalysisResponse | null = null;
-    try {
-      analysisResult = await analyzeQuestion({
-        question_index: s.currentIndex,
-        question_text:  currentQ.text,
-        transcript:     capturedTxRef.current,
-        vision_metrics: visionMetrics,
-      });
-
-      safeSet((p) => ({
-        ...p,
-        results:        [...p.results, analysisResult!],
-        isProcessing:   false,
-        elaborateCount: 0,
-      }));
-
-      if ((analysisResult?.result?.overall_score ?? 0) >= 65) {
-        setAira("encouraging", ENCOURAGE);
-        void speak(ENCOURAGE);
-        await new Promise<void>((r) => setTimeout(r, 1000));
-      }
-    } catch (err) {
-      console.error("[LLM-2] analyzeQuestion failed:", err);
-      safeSet((p) => ({ ...p, isProcessing: false, elaborateCount: 0 }));
-    }
-
-    // No question count limit: questions continue until timer expires or user ends.
-    // The done/finished phase is triggered only by timeout or endInterviewEarly().
-    const nextIdx = s.currentIndex + 1;
-
-    // LLM-1: Generate next question
-    setAira("thinking", GENERATING);
-    void speak(GENERATING);
-    safeSet((p) => ({
-      ...p,
-      currentIndex:      nextIdx,
-      phase:             "generating_question",
-      isProcessing:      true,
-      processingMessage: "Preparing next question…",
-    }));
-    processingRef.current = false;
-
-    try {
-      const nextQ = await fetchNextQuestion(nextIdx + 1);
-      safeSet((p) => ({ ...p, isProcessing: false, currentQuestion: nextQ }));
-      await askQuestionRef.current?.(nextIdx, nextQ);
-    } catch (err) {
-      console.error("[LLM-1] fetchNextQuestion failed:", err);
-      safeSet((p) => ({ ...p, isProcessing: false, error: "Question generation failed.", phase: "done", isFinished: true }));
-    }
-  }, [speech, vision, setAira, speak, safeSet, clearTimers, fetchNextQuestion]);
-
-  useLayoutEffect(() => { submitAnswerRef.current = submitCurrentAnswer; }, [submitCurrentAnswer]);
-
-  // ------------ Silence detection (2.5s auto-submit) ---------------------
-  useEffect(() => {
-    if (session.phase !== "listening") return;
-    const caption = speech.liveCaption.trim();
-    if (caption === lastCaptionRef.current) return;
-    lastCaptionRef.current = caption;
-    if (!caption) return;
-
-    const lower = caption.toLowerCase();
-    if (REPEAT_TRIGGERS.some((t) => lower.includes(t))) {
-      speech.resetTranscript();
-      const q = sessionRef.current.currentQuestion ?? sessionRef.current.questions[sessionRef.current.currentIndex];
-      if (q) void speak(q.text).then(() => setAira("listening", "Listening…"));
-      return;
-    }
-
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-
-    silenceTimerRef.current = setTimeout(() => {
-      const s = sessionRef.current;
-      if (s.phase !== "listening" || processingRef.current) return;
-      if (isSpeaking) return;
-
-      const answerToSubmit = speech.liveCaption.trim() || speech.finalTranscript.trim();
-      if (!answerToSubmit) return;
-
-      console.log("[SilenceTimer] 2.5s silence detected — submitting answer automatically:", answerToSubmit);
-      void submitAnswerRef.current?.(answerToSubmit);
-    }, SILENCE_AFTER_SPEECH_MS);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [speech.liveCaption, session.phase, isSpeaking]);
-
   // ------------ Finalize interview -----------------------------------
   const doFinalize = useCallback(
     async (reason: "finished" | "timeout" | "early"): Promise<InterviewFinalizeResponse | null> => {
@@ -542,10 +442,238 @@ export function useAutoInterviewSession(
     [cancelVoice, vision, speech, setAira, speak, safeSet, clearTimers]
   );
 
-  // Auto-finalize on timeout
+  // ------------ SUBMIT ANSWER (LLM-2 evaluate + chain to next Q) -------
+  const submitCurrentAnswer = useCallback(async (overrideTranscript?: string) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    clearTimers();
+
+    let transcript = (overrideTranscript !== undefined ? overrideTranscript : speech.stopListening()).trim();
+    const visionMetrics = vision.stopCapture();
+
+    if (overrideTranscript === undefined) {
+      await new Promise<void>((r) => setTimeout(r, 200));
+      if (speech.finalTranscript && speech.finalTranscript.length > transcript.length) {
+        transcript = speech.finalTranscript.trim();
+      }
+    }
+    capturedTxRef.current = transcript;
+
+    const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length;
+    const s         = sessionRef.current;
+    const currentQ  = s.currentQuestion ?? s.questions[s.currentIndex];
+
+    if (!currentQ) { processingRef.current = false; return; }
+
+    console.log(`[INTERVIEW] Q${s.currentIndex + 1} answer: ${wordCount} words | "${transcript.slice(0, 100)}"`);
+
+    // LLM-2: Evaluate answer
+    setAira("thinking", THINKING);
+    void speak(THINKING);
+    safeSet((p) => ({
+      ...p,
+      phase:             "processing",
+      isProcessing:      true,
+      processingMessage: "Analysing your answer…",
+      liveCaption:       "",
+    }));
+
+    let analysisResult: QuestionAnalysisResponse | null = null;
+    const isFollowUp = s.elaborateCount > 0;
+    try {
+      analysisResult = await analyzeQuestion({
+        question_index: s.currentIndex,
+        question_text:  currentQ.text,
+        transcript:     capturedTxRef.current,
+        vision_metrics: visionMetrics,
+        is_follow_up:   isFollowUp,
+      });
+
+      safeSet((p) => ({
+        ...p,
+        results:        [...p.results, analysisResult!],
+        isProcessing:   false,
+      }));
+    } catch (err) {
+      console.error("[LLM-2] analyzeQuestion failed:", err);
+      safeSet((p) => ({ ...p, isProcessing: false }));
+    }
+
+    // ── Follow-up probe logic ──────────────────────────────────────────
+    // If the answer was weak AND this wasn't already a follow-up AND we
+    // have enough time, ask the candidate to elaborate before moving on.
+    const score = analysisResult?.result?.overall_score ?? 0;
+    const currentTime = sessionRef.current.timeRemainingSec;
+    const canFollowUp = !isFollowUp
+      && s.elaborateCount < 1
+      && currentTime > MIN_TIME_FOR_NEW_QUESTION
+      && (score < FOLLOW_UP_THRESHOLD || wordCount < FOLLOW_UP_MIN_WORDS);
+
+    if (canFollowUp) {
+      console.log(`[INTERVIEW] Weak answer (score=${score}, words=${wordCount}) — asking follow-up probe`);
+      setAira("speaking", FOLLOW_UP_PROBE);
+      safeSet((p) => ({
+        ...p,
+        elaborateCount: p.elaborateCount + 1,
+        isProcessing:   false,
+      }));
+
+      await speak(FOLLOW_UP_PROBE);
+      await new Promise<void>((r) => setTimeout(r, 400));
+
+      if (!isMountedRef.current) { processingRef.current = false; return; }
+
+      // Re-enter listening for the follow-up answer
+      setAira("listening", "Listening…");
+      speech.resetTranscript();
+      lastCaptionRef.current = "";
+      capturedTxRef.current  = "";
+      safeSet((p) => ({ ...p, phase: "listening", liveCaption: "" }));
+      speech.startListening();
+      void vision.startCapture();
+      processingRef.current = false;
+
+      // No-answer nudge
+      noAnswerTimerRef.current = setTimeout(() => {
+        if (sessionRef.current.phase !== "listening" || processingRef.current) return;
+        if (lastCaptionRef.current.trim().length > 0) return;
+        setAira("listening", NO_ANSWER);
+        void speak(NO_ANSWER);
+      }, NO_SPEECH_TIMEOUT_MS);
+
+      return; // Wait for the follow-up answer to be submitted via silence detection
+    }
+
+    // ── Positive encouragement for good answers ────────────────────────
+    if (score >= 65 && !isFollowUp) {
+      setAira("encouraging", ENCOURAGE);
+      void speak(ENCOURAGE);
+      await new Promise<void>((r) => setTimeout(r, 1000));
+    }
+
+    // Reset elaborate count after processing
+    safeSet((p) => ({ ...p, elaborateCount: 0 }));
+
+    // ── Timer gate: check if we have enough time for another question ──
+    const timeLeft = sessionRef.current.timeRemainingSec;
+    if (timeLeft < MIN_TIME_FOR_NEW_QUESTION || timeoutPendingRef.current) {
+      console.log(`[INTERVIEW] Not enough time for new question (${timeLeft}s left). Wrapping up.`);
+      setAira("greeting", WRAP_UP_MSG);
+      void speak(WRAP_UP_MSG);
+      processingRef.current = false;
+      void doFinalize(timeoutPendingRef.current ? "timeout" : "early");
+      return;
+    }
+
+    // ── LLM-1: Generate next question ──────────────────────────────────
+    const nextIdx = s.currentIndex + 1;
+    setAira("thinking", GENERATING);
+    void speak(GENERATING);
+    safeSet((p) => ({
+      ...p,
+      currentIndex:      nextIdx,
+      phase:             "generating_question",
+      isProcessing:      true,
+      processingMessage: "Preparing next question…",
+    }));
+    processingRef.current = false;
+
+    try {
+      const nextQ = await fetchNextQuestion(nextIdx + 1);
+
+      // Re-check time after question generation (may have taken 3-15s)
+      const timeAfterGen = sessionRef.current.timeRemainingSec;
+      if (timeAfterGen < 20 || timeoutPendingRef.current) {
+        console.log(`[INTERVIEW] Time ran out during Q generation (${timeAfterGen}s left). Wrapping up.`);
+        setAira("greeting", WRAP_UP_MSG);
+        void speak(WRAP_UP_MSG);
+        safeSet((p) => ({ ...p, isProcessing: false }));
+        void doFinalize(timeoutPendingRef.current ? "timeout" : "early");
+        return;
+      }
+
+      safeSet((p) => ({ ...p, isProcessing: false, currentQuestion: nextQ }));
+      await askQuestionRef.current?.(nextIdx, nextQ);
+    } catch (err) {
+      console.error("[LLM-1] fetchNextQuestion failed:", err);
+      safeSet((p) => ({ ...p, isProcessing: false, error: "Question generation failed.", phase: "done", isFinished: true }));
+    }
+  }, [speech, vision, setAira, speak, safeSet, clearTimers, fetchNextQuestion, doFinalize]);
+
+  useLayoutEffect(() => { submitAnswerRef.current = submitCurrentAnswer; }, [submitCurrentAnswer]);
+
+  // ------------ Silence detection (2.5s auto-submit) ---------------------
+  useEffect(() => {
+    if (session.phase !== "listening") return;
+    const caption = speech.liveCaption.trim();
+    if (caption === lastCaptionRef.current) return;
+    lastCaptionRef.current = caption;
+    if (!caption) return;
+
+    const lower = caption.toLowerCase();
+    if (REPEAT_TRIGGERS.some((t) => lower.includes(t))) {
+      speech.resetTranscript();
+      const q = sessionRef.current.currentQuestion ?? sessionRef.current.questions[sessionRef.current.currentIndex];
+      if (q) void speak(q.text).then(() => setAira("listening", "Listening…"));
+      return;
+    }
+
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+    silenceTimerRef.current = setTimeout(() => {
+      const s = sessionRef.current;
+      if (s.phase !== "listening" || processingRef.current) return;
+      if (isSpeaking) return;
+
+      const answerToSubmit = speech.liveCaption.trim() || speech.finalTranscript.trim();
+      if (!answerToSubmit) return;
+
+      console.log("[SilenceTimer] 2.5s silence detected — submitting answer automatically:", answerToSubmit);
+      void submitAnswerRef.current?.(answerToSubmit);
+    }, SILENCE_AFTER_SPEECH_MS);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speech.liveCaption, session.phase, isSpeaking]);
+
+
+
+  // Auto-finalize on timeout — uses graceful pending flag instead of hard-cut.
+  // If the interview is mid-processing or mid-question, the flag ensures the
+  // current operation completes before finalization happens.
   useEffect(() => {
     if (session.timeRemainingSec <= 0 && !session.isFinished && session.phase !== "idle" && session.phase !== "finished") {
-      void doFinalize("timeout");
+      // If currently listening or processing, set pending flag and let
+      // submitCurrentAnswer handle the graceful wind-down.
+      if (session.phase === "listening" || session.phase === "processing" || session.phase === "generating_question") {
+        timeoutPendingRef.current = true;
+        console.log("[TIMER] Timeout pending — waiting for current operation to finish.");
+        // If listening, auto-submit whatever we have right now
+        if (session.phase === "listening") {
+          const currentAnswer = speech.liveCaption?.trim() || speech.finalTranscript?.trim() || "";
+          void submitAnswerRef.current?.(currentAnswer);
+        }
+      } else {
+        void doFinalize("timeout");
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.timeRemainingSec]);
+
+  // ------------ Time warnings (60s and 30s) ----------------------------
+  useEffect(() => {
+    if (session.isFinished || session.phase === "idle" || session.phase === "finished") return;
+
+    // 60-second warning
+    if (session.timeRemainingSec <= 60 && session.timeRemainingSec > 58 && !timeWarning60Ref.current) {
+      timeWarning60Ref.current = true;
+      console.log("[TIMER] 60-second warning");
+      void speak(TIME_WARNING_60S);
+    }
+
+    // 30-second warning
+    if (session.timeRemainingSec <= 30 && session.timeRemainingSec > 28 && !timeWarning30Ref.current) {
+      timeWarning30Ref.current = true;
+      console.log("[TIMER] 30-second warning");
+      void speak(TIME_WARNING_30S);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.timeRemainingSec]);
@@ -560,9 +688,10 @@ export function useAutoInterviewSession(
       jobTitle   = "",
       resumeText = "",
       jobDesc    = "",
+      durationSec = DEFAULT_DURATION_SEC,
       onFinished?: (report: InterviewFinalizeResponse | null) => void,
     ) => {
-      console.log("[INTERVIEW] startInterview called. isMounted:", isMountedRef.current);
+      console.log(`[INTERVIEW] startInterview called. duration=${durationSec}s isMounted:`, isMountedRef.current);
 
       candidateNameRef.current = name;
       jobTitleRef.current      = jobTitle;
@@ -571,6 +700,13 @@ export function useAutoInterviewSession(
       onFinishedRef.current    = onFinished;
       askedTextsRef.current    = [];
       processingRef.current    = false;
+      timeoutPendingRef.current = false;
+      timeWarning60Ref.current  = false;
+      timeWarning30Ref.current  = false;
+      durationRef.current       = durationSec;
+
+      // Set the initial timer to the chosen duration
+      safeSet((p) => ({ ...p, timeRemainingSec: durationSec }));
 
       // ① Start timer immediately — runs independently in its own interval
       startTimer();
@@ -601,11 +737,8 @@ export function useAutoInterviewSession(
       console.log("[INTERVIEW] Q1 ready, askQuestionRef set:", !!askQuestionRef.current, "isMounted:", isMountedRef.current);
 
       // ⑤ Wait for greeting to have played (min 2.5s from start)
-      // (we already started generating Q1, so this overlap is free)
       await new Promise<void>((r) => setTimeout(r, 2000));
 
-      // NOTE: We do NOT check isMountedRef here — the Strict Mode double-mount
-      // fix above means it will be true. We only check after real async I/O.
       console.log("[INTERVIEW] Asking Q1 now. isMounted:", isMountedRef.current);
 
       // ⑥ Ask Q1

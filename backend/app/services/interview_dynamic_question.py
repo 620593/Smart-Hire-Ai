@@ -51,6 +51,13 @@ ADAPTIVE DIFFICULTY RULES — THIS IS CRITICAL:
   foundational questions to build their confidence.
 - Never ask questions that require 5+ years of industry experience unless the
   candidate has clearly demonstrated that level in prior answers.
+- For the FIRST 3 questions (question_number <= 3), ALWAYS keep questions
+  basic and fresher-friendly regardless of prior scores. This gives the
+  candidate time to warm up.
+- If the resume indicates the candidate is a fresher, recent graduate, or
+  has less than 2 years of experience, keep ALL questions at a basic to
+  intermediate level. Do NOT ask advanced or senior-level questions.
+- When in doubt about experience level, default to simpler questions.
 
 Principles:
 1. Build on the conversation — if a previous answer was weak (low score),
@@ -82,6 +89,7 @@ def _build_prompt(req: GenerateNextQuestionRequest) -> str:
         f"JOB TITLE: {req.job_title or 'Not specified'}",
         f"CANDIDATE: {req.candidate_name or 'Not specified'}",
         f"QUESTION {req.question_number} OF {req.total_questions}",
+        f"WARMUP PHASE: {'YES — keep this question basic and approachable' if req.question_number <= 3 else 'NO — adapt difficulty based on prior scores'}",
         f"COVERED CATEGORIES: {', '.join(req.covered_categories) or 'None yet'}",
         "",
     ]

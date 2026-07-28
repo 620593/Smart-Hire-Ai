@@ -211,8 +211,16 @@ function LiveVisionPanel({ videoRef, liveMetrics, isActive, permGranted }: LiveV
 // SetupScreen
 // ---------------------------------------------------------------------------
 
+const DURATION_OPTIONS = [
+  { label: "Quick",        value: 300,  desc: "5 min" },
+  { label: "Standard",     value: 600,  desc: "10 min" },
+  { label: "Extended",     value: 900,  desc: "15 min" },
+  { label: "Deep Dive",    value: 1200, desc: "20 min" },
+  { label: "Full Session", value: 1800, desc: "30 min" },
+];
+
 interface SetupProps {
-  onReady: (jobTitle: string, resumeText: string, jobDesc: string) => void;
+  onReady: (jobTitle: string, resumeText: string, jobDesc: string, durationSec: number) => void;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   permGranted: boolean;
   permError: string | null;
@@ -222,6 +230,7 @@ function SetupScreen({ onReady, videoRef, permGranted, permError }: SetupProps) 
   const [resumeText,     setResumeText]     = useState("");
   const [jobDesc,        setJobDesc]        = useState("");
   const [jobTitle,       setJobTitle]       = useState("");
+  const [durationSec,    setDurationSec]    = useState(600); // default: 10 min
   const [error,          setError]          = useState<string | null>(null);
   const [resumeLoading,  setResumeLoading]  = useState(false);
   const [resumeFilename, setResumeFilename] = useState<string | null>(null);
@@ -262,7 +271,7 @@ function SetupScreen({ onReady, videoRef, permGranted, permError }: SetupProps) 
 
   const handleReady = () => {
     if (!jobTitle.trim()) { setError("Please enter the job title."); return; }
-    onReady(jobTitle.trim(), resumeText.trim(), jobDesc.trim());
+    onReady(jobTitle.trim(), resumeText.trim(), jobDesc.trim(), durationSec);
   };
 
   return (
@@ -330,6 +339,36 @@ function SetupScreen({ onReady, videoRef, permGranted, permError }: SetupProps) 
               placeholder="e.g. Senior Software Engineer, Product Manager…"
               className="w-full px-4 py-3 bg-slate-800/60 border border-white/10 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
             />
+          </div>
+
+          {/* Interview Duration */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-violet-400 text-sm">timer</span>
+              Interview Duration
+            </label>
+            <div className="flex gap-2">
+              {DURATION_OPTIONS.map((opt) => (
+                <motion.button
+                  key={opt.value}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setDurationSec(opt.value)}
+                  className={`flex-1 py-2.5 px-2 rounded-xl border text-center transition-all ${
+                    durationSec === opt.value
+                      ? "bg-violet-500/15 border-violet-500/50 ring-1 ring-violet-500/30 shadow-lg shadow-violet-500/10"
+                      : "bg-slate-800/40 border-white/8 hover:border-white/15"
+                  }`}
+                >
+                  <p className={`text-xs font-bold ${
+                    durationSec === opt.value ? "text-violet-300" : "text-slate-300"
+                  }`}>{opt.desc}</p>
+                  <p className={`text-[10px] mt-0.5 ${
+                    durationSec === opt.value ? "text-violet-400/70" : "text-slate-600"
+                  }`}>{opt.label}</p>
+                </motion.button>
+              ))}
+            </div>
           </div>
 
           {/* Resume */}
@@ -426,7 +465,7 @@ function SetupScreen({ onReady, videoRef, permGranted, permError }: SetupProps) 
               ["record_voice_over", "AIRA reads each question aloud via voice"],
               ["mic",          "Speak naturally — 2.5s silence auto-submits"],
               ["analytics",    "Live eye contact, posture & confidence analysis"],
-              ["timer",        "10 minutes total · 5 personalised questions"],
+              ["timer",        `${Math.floor(durationSec / 60)} minutes · Dynamic questions`],
             ].map(([icon, text]) => (
               <div key={icon} className="flex items-center gap-2 text-xs text-slate-400">
                 <span className="material-symbols-outlined text-violet-400/70 text-sm">{icon}</span>
@@ -462,6 +501,7 @@ export function InterviewPage() {
   const [jobTitle,     setJobTitle]     = useState("");
   const [resumeText,   setResumeText]   = useState("");
   const [jobDesc,      setJobDesc]      = useState("");
+  const [durationSec,  setDurationSec]  = useState(600);
   const [hasSetup,     setHasSetup]     = useState(false);
   const [hasStarted,   setHasStarted]   = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
@@ -509,10 +549,11 @@ export function InterviewPage() {
 
   // Setup complete
   const handleSetupReady = useCallback(
-    (jt: string, rt: string, jd: string) => {
+    (jt: string, rt: string, jd: string, dur: number) => {
       setJobTitle(jt);
       setResumeText(rt);
       setJobDesc(jd);
+      setDurationSec(dur);
       setSeedQ1(null);
       setHasSetup(true);
     },
@@ -528,10 +569,10 @@ export function InterviewPage() {
     }
     setHasStarted(true);
     void startInterview(
-      candidateName, jobTitle, resumeText, jobDesc,
+      candidateName, jobTitle, resumeText, jobDesc, durationSec,
       (report) => navigate("/reports", { state: { report: report ?? undefined } })
     );
-  }, [permGranted, startInterview, candidateName, jobTitle, resumeText, jobDesc, navigate]);
+  }, [permGranted, startInterview, candidateName, jobTitle, resumeText, jobDesc, durationSec, navigate]);
 
   const handleEndEarly = useCallback(async () => {
     setShowEndModal(false);
@@ -660,6 +701,36 @@ export function InterviewPage() {
           </div>
         </div>
       </header>
+
+      {/* ── Time Warning Banner ── */}
+      <AnimatePresence>
+        {session.timeRemainingSec <= 60 && session.timeRemainingSec > 0 && !session.isFinished && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className={`relative z-10 shrink-0 w-full text-center py-2 text-xs font-bold tracking-wide ${
+              session.timeRemainingSec <= 30
+                ? "bg-red-500/15 border-b border-red-500/30 text-red-400"
+                : "bg-amber-500/10 border-b border-amber-500/20 text-amber-400"
+            }`}
+          >
+            <motion.div
+              animate={{ scale: [1, 1.02, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              className="flex items-center justify-center gap-2"
+            >
+              <span className="material-symbols-outlined text-sm">
+                {session.timeRemainingSec <= 30 ? "warning" : "bolt"}
+              </span>
+              {session.timeRemainingSec <= 30
+                ? `⚠️ ${session.timeRemainingSec} seconds remaining — wrapping up`
+                : `⚡ ${Math.ceil(session.timeRemainingSec / 60)} minute remaining`
+              }
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Main 3-column layout ── */}
       <main className="relative z-10 flex-1 grid grid-cols-12 gap-0 overflow-hidden">

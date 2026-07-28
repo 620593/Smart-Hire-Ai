@@ -572,6 +572,39 @@ export function ReportPage() {
           </motion.section>
         )}
 
+        {/* Candidate Suitability Notes */}
+        {report && report.result.candidate_suitability_notes && report.result.candidate_suitability_notes.length > 0 && (
+          <motion.section
+            variants={itemVariants}
+            className="md:col-span-12 glass-card p-6 rounded-xl border border-violet-500/20 bg-violet-500/5"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <span className="material-symbols-outlined text-violet-400 text-[20px]">
+                assignment_ind
+              </span>
+              <h3 className="text-base font-bold text-white">
+                Candidate Suitability Notes
+              </h3>
+              <span className="ml-auto text-xs text-on-surface-variant font-mono">
+                AI Assessment
+              </span>
+            </div>
+            <div className="space-y-2">
+              {report.result.candidate_suitability_notes.map((note, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-2 p-3 rounded-lg bg-violet-500/5 border border-violet-500/10"
+                >
+                  <span className="material-symbols-outlined text-violet-400/70 text-sm mt-0.5 shrink-0">
+                    info
+                  </span>
+                  <p className="text-xs text-slate-300 leading-relaxed">{note}</p>
+                </div>
+              ))}
+            </div>
+          </motion.section>
+        )}
+
         {/* Per-Question Breakdown */}
         <motion.section variants={itemVariants} className="md:col-span-12 space-y-4">
           <div className="flex items-center justify-between px-2">

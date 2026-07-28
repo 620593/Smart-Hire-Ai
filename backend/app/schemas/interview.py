@@ -88,6 +88,10 @@ class QuestionAnalysisRequest(BaseModel):
         default_factory=VisionMetrics,
         description="Aggregated MediaPipe vision metrics for this answer window.",
     )
+    is_follow_up: bool = Field(
+        default=False,
+        description="Whether this is a follow-up elaboration to a previous weak answer.",
+    )
 
 
 class QuestionAnalysisResult(BaseModel):
@@ -165,6 +169,10 @@ class InterviewFinalizeResult(BaseModel):
     weak_question_indices: list[int] = Field(
         default_factory=list,
         description="Zero-based indices of questions scoring below 60.",
+    )
+    candidate_suitability_notes: list[str] = Field(
+        default_factory=list,
+        description="Specific observations about candidate suitability (e.g. vague answers, follow-up struggles).",
     )
 
 

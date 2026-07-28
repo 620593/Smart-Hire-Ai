@@ -36,6 +36,7 @@ export interface QuestionAnalysisRequest {
   question_text: string;
   transcript: string;
   vision_metrics: VisionMetrics;
+  is_follow_up?: boolean;
 }
 
 export interface QuestionAnalysisResult {
@@ -92,6 +93,7 @@ export interface InterviewFinalizeResult {
   top_improvements: string[];
   recommendation: Recommendation;
   weak_question_indices: number[];
+  candidate_suitability_notes: string[];
 }
 
 export interface InterviewFinalizeResponse {

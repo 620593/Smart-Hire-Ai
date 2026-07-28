@@ -61,6 +61,12 @@ Non-verbal interpretation guide:
 If the transcript is empty or very short (< 20 words), significantly lower
 answer_quality_score and relevance_score, and note this in feedback.
 
+Follow-up context:
+- If the answer is marked as a follow-up elaboration (is_follow_up=true), the
+  candidate was asked to elaborate on a weak previous answer. Evaluate the
+  elaboration on its own merit — give credit for improvement, but note if the
+  candidate still struggled to provide substance.
+
 Return ONLY a single valid JSON object — no markdown, no preamble.
 
 Required format:
@@ -85,6 +91,14 @@ def _build_question_prompt(req: QuestionAnalysisRequest) -> str:
     hp  = vm.head_pose
     wc  = len(req.transcript.split()) if req.transcript.strip() else 0
 
+    follow_up_note = (
+        "\n\n=== FOLLOW-UP CONTEXT ===\n"
+        "This answer is a FOLLOW-UP elaboration. The candidate was asked to "
+        "elaborate on a weak initial answer. Evaluate this elaboration fairly "
+        "— give credit for improvement, but note if the candidate still "
+        "struggled to provide substance."
+    ) if req.is_follow_up else ""
+
     return f"""=== INTERVIEW QUESTION (Index {req.question_index + 1}) ===
 {req.question_text}
 
@@ -101,7 +115,7 @@ Smile score          : {vm.smile_score_percent:.1f}%
 Body-lang confidence : {vm.confidence:.1f}%
 Head yaw  (mean/std) : {hp.yaw_mean:.1f} / {hp.yaw_std:.1f} deg
 Head pitch (mean/std): {hp.pitch_mean:.1f} / {hp.pitch_std:.1f} deg
-Head roll  (mean/std): {hp.roll_mean:.1f} / {hp.roll_std:.1f} deg"""
+Head roll  (mean/std): {hp.roll_mean:.1f} / {hp.roll_std:.1f} deg{follow_up_note}"""
 
 
 def _extract_json(raw: str) -> str:

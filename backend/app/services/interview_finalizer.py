@@ -45,6 +45,14 @@ candidate evaluation report.
 You will receive a complete interview transcript with per-question scores and
 vision metrics. Your job is to synthesise all of this into a holistic report.
 
+Candidate suitability notes:
+- Include 1-3 specific observations about candidate suitability patterns.
+- Flag issues like: consistently vague answers, inability to elaborate when probed,
+  answers too short to evaluate, poor understanding of fundamentals, or strong
+  performance across all areas.
+- These notes should help hiring managers make informed decisions.
+- If the candidate performed well, include positive notes instead.
+
 Return ONLY a single valid JSON object — no markdown, no preamble.
 
 Required format:
@@ -56,7 +64,8 @@ Required format:
   "top_strengths": ["<strength1>", "<strength2>", "<strength3>"],
   "top_improvements": ["<improvement1>", "<improvement2>", "<improvement3>"],
   "recommendation": "<one of: Strong Recommend | Recommend | Neutral | Do Not Recommend>",
-  "weak_question_indices": [<list of 0-based indices where overall_score < 60>]
+  "weak_question_indices": [<list of 0-based indices where overall_score < 60>],
+  "candidate_suitability_notes": ["<note1>", "<note2>"]
 }
 """.strip()
 
