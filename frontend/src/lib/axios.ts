@@ -21,10 +21,40 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = [];
 };
 
-export const getAccessToken = (): string | null => accessToken;
+export const getAccessToken = (): string | null => {
+  if (accessToken) return accessToken;
+  if (typeof window !== "undefined") {
+    accessToken = localStorage.getItem("access_token");
+  }
+  return accessToken;
+};
 
 export const setAccessToken = (token: string | null): void => {
   accessToken = token;
+  if (typeof window !== "undefined") {
+    if (token) {
+      localStorage.setItem("access_token", token);
+    } else {
+      localStorage.removeItem("access_token");
+    }
+  }
+};
+
+export const getRefreshToken = (): string | null => {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("refresh_token");
+  }
+  return null;
+};
+
+export const setRefreshToken = (token: string | null): void => {
+  if (typeof window !== "undefined") {
+    if (token) {
+      localStorage.setItem("refresh_token", token);
+    } else {
+      localStorage.removeItem("refresh_token");
+    }
+  }
 };
 
 export const apiClient = axios.create({
@@ -84,10 +114,12 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const response = await apiClient.post("/auth/refresh");
-        const { access_token } = response.data;
+        const rfToken = getRefreshToken();
+        const response = await apiClient.post("/auth/refresh", { refresh_token: rfToken });
+        const { access_token, refresh_token: new_rf } = response.data;
         
         setAccessToken(access_token);
+        if (new_rf) setRefreshToken(new_rf);
         processQueue(null, access_token);
         
         originalRequest.headers.Authorization = `Bearer ${access_token}`;
@@ -95,6 +127,7 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         setAccessToken(null);
+        setRefreshToken(null);
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -104,3 +137,4 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+

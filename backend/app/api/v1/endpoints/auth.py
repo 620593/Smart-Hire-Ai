@@ -72,12 +72,12 @@ async def login(
         value=refresh_token,
         httponly=True,
         secure=True,
-        samesite="strict",
+        samesite="none",
         max_age=7 * 24 * 3600,  # 7 days
         path="/",
     )
 
-    return TokenResponse(access_token=access_token)
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post(
@@ -109,12 +109,13 @@ async def refresh_token(
         value=new_refresh_token,
         httponly=True,
         secure=True,
-        samesite="strict",
+        samesite="none",
         max_age=7 * 24 * 3600,
         path="/",
     )
 
-    return TokenResponse(access_token=access_token)
+    return TokenResponse(access_token=access_token, refresh_token=new_refresh_token)
+
 
 
 @router.post(

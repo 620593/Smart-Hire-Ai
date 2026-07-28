@@ -1,4 +1,4 @@
-import { apiClient, setAccessToken } from "@/lib/axios";
+import { apiClient, setAccessToken, setRefreshToken } from "@/lib/axios";
 import type { User, TokenResponse } from "@/types/auth";
 
 export const AuthService = {
@@ -15,13 +15,20 @@ export const AuthService = {
   async login(payload: Record<string, any>): Promise<TokenResponse> {
     const response = await apiClient.post<TokenResponse>("/auth/login", payload);
     setAccessToken(response.data.access_token);
+    if (response.data.refresh_token) {
+      setRefreshToken(response.data.refresh_token);
+    }
     return response.data;
   },
 
   async logout(): Promise<void> {
-    await apiClient.post("/auth/logout");
+    try {
+      await apiClient.post("/auth/logout");
+    } catch {}
     setAccessToken(null);
+    setRefreshToken(null);
   },
+
 
   async refresh(): Promise<TokenResponse> {
     const response = await apiClient.post<TokenResponse>("/auth/refresh");
