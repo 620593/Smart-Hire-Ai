@@ -89,6 +89,8 @@ class CurrentUserResponse(BaseModel):
     is_active: bool
     is_verified: bool
     is_approved: bool = True
+    created_at: str | None = None
+    last_login: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -107,6 +109,12 @@ class CurrentUserResponse(BaseModel):
                     roles_list.append(str(r.name.value if hasattr(r.name, "value") else r.name))
                 else:
                     roles_list.append(str(r))
+
+            def _iso(val: Any) -> str | None:
+                if val is None:
+                    return None
+                return val.isoformat() if hasattr(val, "isoformat") else str(val)
+
             data_dict = {
                 "id": data.id,
                 "email": data.email,
@@ -119,6 +127,8 @@ class CurrentUserResponse(BaseModel):
                 "is_active": data.is_active,
                 "is_verified": data.is_verified,
                 "is_approved": getattr(data, "is_approved", True),
+                "created_at": _iso(getattr(data, "created_at", None)),
+                "last_login": _iso(getattr(data, "last_login", None)),
             }
             return data_dict
         return data

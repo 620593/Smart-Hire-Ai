@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Resume } from "@/types/resume";
+import { useATSScore } from "@/hooks/useATS";
+import { ATSScorePanel } from "@/components/common/ATSScorePanel";
 
 export function ResumePage() {
   const { data, isLoading, error, refetch } = useResumeList();
@@ -32,6 +34,11 @@ export function ResumePage() {
   
   // Replace target state
   const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null);
+
+  // ATS scoring state
+  const [atsTargetId, setAtsTargetId] = useState<string | null>(null);
+  const [jdText, setJdText] = useState("");
+  const atsMutation = useATSScore();
 
   // Helper: Format bytes to human readable format
   const formatBytes = (bytes: number, decimals = 2) => {
@@ -461,6 +468,17 @@ export function ResumePage() {
                             </span>
                           </button>
                           <button 
+                            onClick={() => {
+                              setAtsTargetId(resume.id);
+                              atsMutation.reset();
+                              setJdText("");
+                            }}
+                            className="p-2 hover:bg-white/10 text-[#818cf8] rounded-lg transition-colors"
+                            title="ATS Score"
+                          >
+                            <span className="material-symbols-outlined text-[20px]">analytics</span>
+                          </button>
+                          <button 
                             onClick={() => handleDelete(resume.id)}
                             className="p-2 hover:bg-white/10 text-error rounded-lg transition-colors"
                             title="Delete"
@@ -476,8 +494,146 @@ export function ResumePage() {
             )}
           </Card>
         </motion.div>
-        
+
       </div>
+
+      {/* ATS Scoring Panel — rendered below the main grid */}
+      <AnimatePresence>
+        {atsTargetId && (() => {
+          const resume = (data?.resumes || []).find(r => r.id === atsTargetId);
+          return (
+            <motion.div
+              key="ats-panel"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 30 }}
+              transition={{ type: "spring", stiffness: 220, damping: 26 }}
+            >
+              <Card className="flex flex-col gap-6">
+                {/* Panel header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-primary text-lg">analytics</span>
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white">ATS Score Analyzer</h3>
+                      <p className="text-[11px] text-on-surface-variant">
+                        {resume?.original_filename}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setAtsTargetId(null);
+                      setJdText("");
+                      atsMutation.reset();
+                    }}
+                    className="p-2 rounded-lg hover:bg-white/10 text-on-surface-variant hover:text-white transition-colors"
+                    title="Close ATS panel"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">close</span>
+                  </button>
+                </div>
+
+                {/* Job description input */}
+                {!atsMutation.data && (
+                  <div className="space-y-3">
+                    <label className="text-xs font-semibold text-white/60 uppercase tracking-widest">
+                      Paste Job Description
+                    </label>
+                    <textarea
+                      value={jdText}
+                      onChange={e => setJdText(e.target.value)}
+                      disabled={atsMutation.isPending}
+                      placeholder="Paste the full job description here (minimum 50 characters)..."
+                      rows={7}
+                      className="w-full bg-white/[0.03] border border-white/10 rounded-xl p-3.5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none transition-colors disabled:opacity-50"
+                    />
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] text-white/25 font-mono">
+                        {jdText.length} / 20,000 chars (min 50)
+                      </p>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => {
+                          if (!atsTargetId || jdText.trim().length < 50) return;
+                          atsMutation.mutate({ resumeId: atsTargetId, jdText: jdText.trim() });
+                        }}
+                        disabled={atsMutation.isPending || jdText.trim().length < 50}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
+                      >
+                        {atsMutation.isPending ? (
+                          <>
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                            Analyzing...
+                          </>
+                        ) : (
+                          <>
+                            <span className="material-symbols-outlined text-[16px]">psychology</span>
+                            Analyze
+                          </>
+                        )}
+                      </motion.button>
+                    </div>
+
+                    {/* ATS error */}
+                    {atsMutation.isError && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-3 rounded-xl bg-error/10 border border-error/20 flex items-center gap-2 text-xs text-error font-semibold"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">error</span>
+                        {(atsMutation.error as any)?.response?.data?.error?.message
+                          || atsMutation.error?.message
+                          || "ATS scoring failed. Please try again."}
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+
+                {/* Loading skeleton */}
+                {atsMutation.isPending && (
+                  <div className="space-y-4 animate-pulse">
+                    <div className="flex gap-6">
+                      <div className="w-36 h-36 rounded-full bg-white/5" />
+                      <div className="flex-1 space-y-3 pt-4">
+                        <div className="h-3 bg-white/5 rounded-full w-1/3" />
+                        <div className="h-6 bg-white/5 rounded-full w-2/5" />
+                        <div className="h-2 bg-white/5 rounded-full w-3/5" />
+                      </div>
+                    </div>
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="h-2 bg-white/5 rounded-full" style={{ width: `${85 - i * 12}%` }} />
+                    ))}
+                  </div>
+                )}
+
+                {/* Score result */}
+                {atsMutation.data && !atsMutation.isPending && (
+                  <div className="space-y-4">
+                    <ATSScorePanel data={atsMutation.data} />
+                    <div className="pt-2 border-t border-white/5 flex justify-end">
+                      <button
+                        onClick={() => {
+                          atsMutation.reset();
+                          setJdText("");
+                        }}
+                        className="text-xs text-primary font-bold hover:underline flex items-center gap-1"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">refresh</span>
+                        Score against another JD
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
     </motion.div>
   );
 }

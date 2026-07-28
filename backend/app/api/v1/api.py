@@ -8,6 +8,8 @@ from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.resumes import router as resumes_router
 from app.api.v1.endpoints.admin import router as admin_router
+from app.api.v1.endpoints.ats import router as ats_router
+from app.api.v1.endpoints.interview import router as interview_router
 
 
 def create_api_v1_router(api_v1_prefix: str) -> APIRouter:
@@ -25,4 +27,6 @@ def create_api_v1_router(api_v1_prefix: str) -> APIRouter:
     router.include_router(auth_router)
     router.include_router(resumes_router)
     router.include_router(admin_router)
+    router.include_router(ats_router)
+    router.include_router(interview_router)
     return router

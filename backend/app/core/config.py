@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     password_hash_hash_len: int = Field(default=32, alias="PASSWORD_HASH_HASH_LEN")
     password_hash_salt_len: int = Field(default=16, alias="PASSWORD_HASH_SALT_LEN")
 
+    groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
+    google_api_key: str = Field(default="", alias="GOOGLE_API_KEY")
+    gemini_model: str = Field(default="gemini-3.1-flash-lite", alias="GEMINI_MODEL")
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

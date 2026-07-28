@@ -47,6 +47,15 @@ def _create_engine(
         max_overflow=database_max_overflow,
         pool_timeout=database_pool_timeout,
         pool_recycle=database_pool_recycle,
+        # asyncpg-specific: set statement timeout and fast connect handshake.
+        # Prevents hanging indefinitely when PostgreSQL is mid-checkpoint on Windows.
+        connect_args={
+            "server_settings": {
+                "application_name": "smarthire_ai",
+                "statement_timeout": "30000",   # 30 s per statement max
+            },
+            "command_timeout": 10,              # 10 s to establish a connection
+        },
     )
 
 

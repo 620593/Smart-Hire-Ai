@@ -104,6 +104,34 @@ async def download_resume_file(
         media_type=mime_type
     )
 
+@router.get("/{id}/text")
+async def get_resume_text(
+    id: UUID,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Extract and return the plain text content of a resume PDF."""
+    from fastapi.responses import JSONResponse
+    from app.utils.pdf_parser import parse_resume
+
+    service = ResumeService(db)
+    user_roles = [role.name for role in current_user.roles]
+
+    storage_path, _, _ = await service.download_resume(
+        resume_id=id,
+        current_user_id=current_user.id,
+        current_user_roles=user_roles
+    )
+
+    try:
+        result = parse_resume(storage_path)
+        text = result.get("text", "") if isinstance(result, dict) else str(result)
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"Failed to parse resume PDF: {str(e)}")
+
+    return JSONResponse(content={"text": text, "char_count": len(text)})
+
 @router.put("/{id}", response_model=ResumeUpdateResponse)
 async def replace_resume_file(
     id: UUID,

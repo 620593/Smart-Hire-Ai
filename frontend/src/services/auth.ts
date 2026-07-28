@@ -35,19 +35,128 @@ export const AuthService = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Types returned by the new admin endpoints
+// ---------------------------------------------------------------------------
+
+export interface PlatformStats {
+  total_users: number;
+  total_recruiters: number;
+  total_candidates: number;
+  pending_recruiters: number;
+  active_recruiters: number;
+  suspended_recruiters: number;
+}
+
+export interface ApiStatus {
+  service: string;
+  status: "ok" | "degraded" | "unconfigured";
+  latency_ms: number | null;
+  detail: string;
+}
+
+export interface SystemHealth {
+  checked_at: string;
+  database: ApiStatus;
+  gemini: ApiStatus;
+  groq: ApiStatus;
+}
+
+// ---------------------------------------------------------------------------
+// AdminService — all calls require an admin Bearer token
+// ---------------------------------------------------------------------------
+
 export const AdminService = {
+  // ── Recruiter management ─────────────────────────────────────────────────
+
   async listPendingRecruiters(): Promise<User[]> {
-    const response = await apiClient.get<User[]>("/admin/recruiters/pending");
-    return response.data;
+    const { data } = await apiClient.get<User[]>("/admin/recruiters/pending");
+    return data;
+  },
+
+  async listAllRecruiters(): Promise<User[]> {
+    const { data } = await apiClient.get<User[]>("/admin/recruiters");
+    return data;
   },
 
   async approveRecruiter(userId: string): Promise<User> {
-    const response = await apiClient.post<User>(`/admin/recruiters/${userId}/approve`);
-    return response.data;
+    const { data } = await apiClient.post<User>(`/admin/recruiters/${userId}/approve`);
+    return data;
   },
 
   async rejectRecruiter(userId: string): Promise<User> {
-    const response = await apiClient.post<User>(`/admin/recruiters/${userId}/reject`);
-    return response.data;
+    const { data } = await apiClient.post<User>(`/admin/recruiters/${userId}/reject`);
+    return data;
+  },
+
+  async deleteRecruiter(userId: string): Promise<void> {
+    await apiClient.delete(`/admin/recruiters/${userId}`);
+  },
+
+  // ── User management ──────────────────────────────────────────────────────
+
+  async listAllUsers(): Promise<User[]> {
+    const { data } = await apiClient.get<User[]>("/admin/users");
+    return data;
+  },
+
+  async deactivateUser(userId: string): Promise<User> {
+    const { data } = await apiClient.post<User>(`/admin/users/${userId}/deactivate`);
+    return data;
+  },
+
+  async activateUser(userId: string): Promise<User> {
+    const { data } = await apiClient.post<User>(`/admin/users/${userId}/activate`);
+    return data;
+  },
+
+  // ── Platform statistics & health ─────────────────────────────────────────
+
+  async getPlatformStats(): Promise<PlatformStats> {
+    const { data } = await apiClient.get<PlatformStats>("/admin/stats");
+    return data;
+  },
+
+  async getSystemHealth(): Promise<SystemHealth> {
+    const { data } = await apiClient.get<SystemHealth>("/admin/health");
+    return data;
+  },
+
+  // ── API Key configuration ─────────────────────────────────────────────────
+
+  async getApiKeys(): Promise<ApiKeyStatusResponse> {
+    const { data } = await apiClient.get<ApiKeyStatusResponse>("/admin/config/keys");
+    return data;
+  },
+
+  async updateApiKeys(payload: UpdateApiKeysRequest): Promise<UpdateApiKeysResponse> {
+    const { data } = await apiClient.put<UpdateApiKeysResponse>("/admin/config/keys", payload);
+    return data;
   },
 };
+
+// ---------------------------------------------------------------------------
+// API key config types
+// ---------------------------------------------------------------------------
+
+export interface ApiKeyStatus {
+  name: string;
+  is_set: boolean;
+  masked_value: string;
+  service: string;
+}
+
+export interface ApiKeyStatusResponse {
+  keys: ApiKeyStatus[];
+}
+
+export interface UpdateApiKeysRequest {
+  google_api_key?: string;
+  groq_api_key?: string;
+}
+
+export interface UpdateApiKeysResponse {
+  updated: string[];
+  message: string;
+}
+
