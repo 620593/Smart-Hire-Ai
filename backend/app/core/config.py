@@ -32,17 +32,31 @@ class Settings(BaseSettings):
     host: str = Field(default=DEFAULT_HOST, alias="HOST")
     port: int = Field(default=DEFAULT_PORT, alias="PORT")
     log_level: str = Field(default=DEFAULT_LOG_LEVEL, alias="LOG_LEVEL")
-    cors_allowed_origins: list[str] = Field(
+    cors_allowed_origins: Any = Field(
         default_factory=lambda: ["http://localhost:5173", "*"],
         alias="CORS_ALLOWED_ORIGINS",
     )
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod
-    def assemble_cors_origins(cls, v: Any) -> Any:
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",") if i.strip()]
-        return v
+    def assemble_cors_origins(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            v_str = v.strip()
+            if not v_str:
+                return ["*"]
+            if v_str.startswith("[") and v_str.endswith("]"):
+                try:
+                    import json
+                    parsed = json.loads(v_str)
+                    if isinstance(parsed, list):
+                        return [str(i) for i in parsed]
+                except Exception:
+                    pass
+            return [i.strip() for i in v_str.split(",") if i.strip()]
+        elif isinstance(v, list):
+            return [str(i) for i in v]
+        return ["*"]
+
 
     database_host: str = Field(default="localhost", alias="DATABASE_HOST")
     database_port: int = Field(default=5432, alias="DATABASE_PORT")
