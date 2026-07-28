@@ -55,45 +55,72 @@ async def _wait_for_db() -> None:
     )
 
 
-def _run_auto_migrations() -> None:
-    """Execute Alembic upgrade head automatically on application startup."""
-    logger = logger_factory("app.lifespan.migrations")
+async def _create_static_schema() -> None:
+    """Create all database tables statically using SQLAlchemy Base metadata."""
+    logger = logger_factory("app.lifespan.schema")
     try:
-        from alembic.config import Config
-        from alembic import command
-        from pathlib import Path
-
-        base_dir = Path(__file__).resolve().parent.parent.parent
-        alembic_ini = base_dir / "alembic.ini"
-        if alembic_ini.exists():
-            logger.info("Running automatic Alembic migrations (upgrade head)…")
-            alembic_cfg = Config(str(alembic_ini))
-            command.upgrade(alembic_cfg, "head")
-            logger.info("Alembic migrations completed successfully [OK]")
+        from app.db.base import Base
+        from app import models as _models  # noqa: F401
+        engine = get_engine()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Static database schema verified [OK]")
     except Exception as exc:
-        logger.warning("Automatic Alembic migration notice: %s", exc)
+        logger.warning("Static schema creation notice: %s", exc)
 
 
-async def _seed_initial_roles() -> None:
-    """Ensure default roles (ADMIN, RECRUITER, CANDIDATE) exist in the database."""
-    logger = logger_factory("app.lifespan.roles")
+async def _seed_initial_data() -> None:
+    """Ensure default roles (ADMIN, RECRUITER, CANDIDATE) and default admin user exist."""
+    logger = logger_factory("app.lifespan.seed")
     try:
         from app.db.database import get_session_factory
         from app.db.enums import UserRole
         from app.models.role import Role
+        from app.models.user import User
+        from app.core.security.password import PasswordManager
         from sqlalchemy import select
 
+        pm = PasswordManager()
         session_factory = get_session_factory()
         async with session_factory() as session:
-            for role_name in [UserRole.ADMIN, UserRole.RECRUITER, UserRole.CANDIDATE]:
-                query = select(Role).where(Role.name == role_name)
+            # 1. Seed Roles
+            roles_map = {}
+            for role_enum in [UserRole.ADMIN, UserRole.RECRUITER, UserRole.CANDIDATE]:
+                query = select(Role).where(Role.name == role_enum)
                 res = await session.execute(query)
-                if not res.scalar_one_or_none():
-                    session.add(Role(name=role_name, description=f"Default {role_name.value} role"))
-                    logger.info("Created missing role: %s", role_name.value)
+                role_obj = res.scalar_one_or_none()
+                if not role_obj:
+                    role_obj = Role(name=role_enum, description=f"Default {role_enum.value} role")
+                    session.add(role_obj)
+                    await session.flush()
+                    logger.info("Created missing role: %s", role_enum.value)
+                roles_map[role_enum] = role_obj
+
+            # 2. Seed Admin User 'ranjith'
+            user_q = await session.execute(select(User).where(User.username == "ranjith"))
+            admin_user = user_q.scalar_one_or_none()
+            if not admin_user:
+                admin_user = User(
+                    email="ranjith@smarthire.ai",
+                    username="ranjith",
+                    hashed_password=pm.hash_password("ranjith143"),
+                    first_name="Ranjith",
+                    last_name="Admin",
+                    is_active=True,
+                    is_verified=True,
+                    is_approved=True,
+                )
+                admin_user.roles.append(roles_map[UserRole.ADMIN])
+                session.add(admin_user)
+                logger.info("Seeded default admin user 'ranjith'")
+            else:
+                admin_user.is_active = True
+                admin_user.is_verified = True
+                admin_user.is_approved = True
+
             await session.commit()
     except Exception as exc:
-        logger.warning("Failed to seed initial roles: %s", exc)
+        logger.warning("Failed to seed initial data: %s", exc)
 
 
 @asynccontextmanager
@@ -115,10 +142,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await _wait_for_db()
 
-    # Automatically apply Alembic migrations and seed roles on startup
-    _run_auto_migrations()
-    await _seed_initial_roles()
+    # Create static schema & seed initial roles/users on startup
+    await _create_static_schema()
+    await _seed_initial_data()
 
     logger.info("SmartHire AI Backend ready [OK]")
     yield
-    logger.info("SmartHire AI Backend stopped")
+    logger.info("SmartHire AI Backend stopped")
+
