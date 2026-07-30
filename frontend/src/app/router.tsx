@@ -16,6 +16,7 @@ import { InterviewPage } from "@/pages/Interview/InterviewPage";
 import { ReportPage } from "@/pages/Report/ReportPage";
 import { ResumePage } from "@/pages/Resume/ResumePage";
 import { CandidatesPage } from "@/pages/Candidates/CandidatesPage";
+import { HelpCenterPage } from "@/pages/Help/HelpCenterPage";
 import { UnauthorizedPage } from "@/pages/Error/UnauthorizedPage";
 import { ForbiddenPage } from "@/pages/Error/ForbiddenPage";
 import { NotFoundPage } from "@/pages/NotFound/NotFoundPage";
@@ -114,6 +115,13 @@ export const router = createBrowserRouter([
       { path: "/reports", element: <ReportPage /> },
       { path: "/resume", element: <ResumePage /> },
     ],
+  },
+
+  // ── Help Center (public — no auth required) ──
+  {
+    path: "/help",
+    errorElement: <RouteErrorBoundary />,
+    element: <HelpCenterPage />,
   },
 
   // ── Error pages ──
