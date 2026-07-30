@@ -66,7 +66,7 @@ export function DashboardLayout() {
     : "Candidate";
 
   const displayName = user?.first_name ?? user?.username ?? "User";
-  const initials = displayName.slice(0, 2).toUpperCase();
+  const initials = (displayName || "User").slice(0, 2).toUpperCase();
 
   const navItemClass = (to: string) =>
     `flex items-center rounded-xl transition-all duration-150 relative
