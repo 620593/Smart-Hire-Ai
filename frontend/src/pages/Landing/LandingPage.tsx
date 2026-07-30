@@ -153,8 +153,8 @@ export function LandingPage() {
     <div className="min-h-screen bg-[#070c18] text-[#dae2fd] font-sans selection:bg-[#5b5cf6] selection:text-white overflow-x-hidden">
       
       {/* ─── STICKY GLASS NAVBAR ─── */}
-      <nav className="bg-[#070c18]/80 backdrop-blur-xl border-b border-white/10 w-full sticky top-0 z-50 shadow-lg transition-all">
-        <div className="flex justify-between items-center px-6 md:px-12 py-3.5 max-w-[1280px] mx-auto">
+      <nav className="bg-[#070c18]/90 backdrop-blur-xl border-b border-white/10 w-full sticky top-0 z-50 shadow-lg transition-all">
+        <div className="flex justify-between items-center px-6 md:px-12 lg:px-16 py-4 w-full">
           {/* Brand Logo */}
           <Link to="/" className="flex items-center gap-3 group">
             <div className="w-10 h-10 bg-gradient-to-br from-[#5b5cf6] to-purple-600 rounded-xl flex items-center justify-center border border-white/20 shadow-md shadow-[#5b5cf6]/30 group-hover:scale-105 transition-transform">
@@ -189,7 +189,7 @@ export function LandingPage() {
             </Link>
             <Link
               to="/register"
-              className="bg-[#5b5cf6] hover:bg-[#4b4ce6] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-[#5b5cf6]/25 hover:shadow-[#5b5cf6]/40 active:scale-95 transition-all flex items-center gap-1.5"
+              className="bg-[#5b5cf6] hover:bg-[#4b4ce6] text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-[#5b5cf6]/25 hover:shadow-[#5b5cf6]/40 active:scale-95 transition-all flex items-center gap-1.5"
             >
               <span>Get Started Free</span>
               <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
@@ -199,7 +199,8 @@ export function LandingPage() {
       </nav>
 
       {/* ─── HERO SECTION ─── */}
-      <section className="relative pt-20 pb-20 px-4 md:px-12 max-w-[1280px] mx-auto overflow-hidden">
+      <section className="relative pt-20 pb-20 px-6 md:px-12 lg:px-16 w-full overflow-hidden">
+
         {/* Ambient Gradient Orbs */}
         <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-gradient-to-tr from-[#5b5cf6]/20 via-purple-600/15 to-cyan-500/10 rounded-full blur-[140px] pointer-events-none" />
 
@@ -286,7 +287,7 @@ export function LandingPage() {
       </section>
 
       {/* ─── LIVE INTERACTIVE DEMO WIDGET ─── */}
-      <section id="demo" className="py-16 px-4 md:px-12 max-w-[1280px] mx-auto">
+      <section id="demo" className="py-16 px-6 md:px-12 lg:px-16 w-full">
         <div className="text-center mb-10">
           <span className="text-xs font-mono font-bold text-[#5b5cf6] uppercase tracking-widest bg-[#5b5cf6]/10 px-3.5 py-1 rounded-full border border-[#5b5cf6]/20">
             Interactive Experience
@@ -318,7 +319,7 @@ export function LandingPage() {
         </div>
 
         {/* Live Interactive Preview Box */}
-        <div className="bg-[#0f172a]/90 border border-white/10 rounded-2xl p-6 md:p-8 max-w-4xl mx-auto shadow-2xl backdrop-blur-xl relative overflow-hidden">
+        <div className="bg-[#0f172a]/90 border border-white/10 rounded-2xl p-6 md:p-8 max-w-5xl mx-auto shadow-2xl backdrop-blur-xl relative overflow-hidden">
           {/* Question Title */}
           <div className="flex items-start justify-between gap-4 mb-6 pb-4 border-b border-white/10">
             <div>
@@ -406,7 +407,7 @@ export function LandingPage() {
       </section>
 
       {/* ─── FEATURE SHOWCASE TABS ─── */}
-      <section id="features" className="py-20 px-4 md:px-12 max-w-[1280px] mx-auto">
+      <section id="features" className="py-20 px-6 md:px-12 lg:px-16 w-full">
         <div className="text-center max-w-3xl mx-auto mb-14">
           <span className="text-xs font-mono font-bold text-purple-400 uppercase tracking-widest bg-purple-500/10 px-3.5 py-1 rounded-full border border-purple-500/20">
             End-to-End Intelligence
@@ -455,7 +456,7 @@ export function LandingPage() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            className="bg-[#0f172a] border border-white/10 rounded-2xl p-8 max-w-5xl mx-auto shadow-2xl relative overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-8 items-center"
+            className="bg-[#0f172a] border border-white/10 rounded-2xl p-8 max-w-6xl mx-auto shadow-2xl relative overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-8 items-center"
           >
             {/* Left Content */}
             <div className="lg:col-span-6 space-y-4">
@@ -510,7 +511,7 @@ export function LandingPage() {
       </section>
 
       {/* ─── ALL PLATFORM CAPABILITIES GRID ─── */}
-      <section className="py-20 px-4 md:px-12 max-w-[1280px] mx-auto border-t border-white/10">
+      <section className="py-20 px-6 md:px-12 lg:px-16 w-full border-t border-white/10">
         <div className="text-center max-w-3xl mx-auto mb-16">
           <h2 className="text-3xl md:text-4xl font-extrabold text-white">
             Comprehensive Suite of AI Features
@@ -520,7 +521,7 @@ export function LandingPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
           {PLATFORM_CAPABILITIES.map((cap, i) => (
             <div
               key={i}
@@ -544,7 +545,7 @@ export function LandingPage() {
       </section>
 
       {/* ─── DUAL PORTAL SHOWCASE (CANDIDATES VS RECRUITERS) ─── */}
-      <section id="portals" className="py-20 px-4 md:px-12 max-w-[1280px] mx-auto border-t border-white/10">
+      <section id="portals" className="py-20 px-6 md:px-12 lg:px-16 w-full border-t border-white/10">
         <div className="text-center max-w-3xl mx-auto mb-16">
           <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-widest bg-cyan-500/10 px-3.5 py-1 rounded-full border border-cyan-500/20">
             Tailored Experiences
@@ -554,7 +555,7 @@ export function LandingPage() {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-6xl mx-auto">
           {/* Candidate Card */}
           <div className="bg-gradient-to-b from-[#141f38] to-[#0f172a] border border-[#5b5cf6]/30 p-8 rounded-2xl shadow-xl flex flex-col justify-between">
             <div>
@@ -634,7 +635,7 @@ export function LandingPage() {
       </section>
 
       {/* ─── PRICING SECTION ─── */}
-      <section id="pricing" className="py-20 px-4 md:px-12 max-w-[1280px] mx-auto border-t border-white/10">
+      <section id="pricing" className="py-20 px-6 md:px-12 lg:px-16 w-full border-t border-white/10">
         <div className="text-center max-w-3xl mx-auto mb-12">
           <span className="text-xs font-mono font-bold text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-3.5 py-1 rounded-full border border-emerald-500/20">
             Simple Pricing
@@ -666,7 +667,7 @@ export function LandingPage() {
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
           {/* Starter Plan */}
           <div className="bg-[#0f172a] border border-white/10 p-8 rounded-2xl flex flex-col justify-between">
             <div>
@@ -766,7 +767,7 @@ export function LandingPage() {
       </section>
 
       {/* ─── FREQUENTLY ASKED QUESTIONS (FAQ) ACCORDION ─── */}
-      <section id="faq" className="py-20 px-4 md:px-12 max-w-[1280px] mx-auto border-t border-white/10">
+      <section id="faq" className="py-20 px-6 md:px-12 lg:px-16 w-full border-t border-white/10">
         <div className="text-center max-w-3xl mx-auto mb-14">
           <h2 className="text-3xl md:text-4xl font-extrabold text-white">
             Frequently Asked Questions
@@ -776,7 +777,7 @@ export function LandingPage() {
           </p>
         </div>
 
-        <div className="max-w-3xl mx-auto space-y-4">
+        <div className="max-w-4xl mx-auto space-y-4">
           {FAQ_ITEMS.map((item, idx) => (
             <div
               key={idx}
@@ -813,9 +814,9 @@ export function LandingPage() {
       </section>
 
       {/* ─── FINAL CALL TO ACTION FOOTER BANNER ─── */}
-      <section className="py-16 px-4 md:px-12 max-w-[1280px] mx-auto mb-12">
-        <div className="bg-gradient-to-r from-[#5b5cf6] via-purple-600 to-indigo-700 rounded-3xl p-10 md:p-14 text-center text-white shadow-2xl relative overflow-hidden">
-          <div className="max-w-2xl mx-auto relative z-10">
+      <section className="py-16 px-6 md:px-12 lg:px-16 w-full mb-12">
+        <div className="bg-gradient-to-r from-[#5b5cf6] via-purple-600 to-indigo-700 rounded-3xl p-10 md:p-14 text-center text-white shadow-2xl relative overflow-hidden max-w-6xl mx-auto">
+          <div className="max-w-3xl mx-auto relative z-10">
             <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight mb-4">
               Ready to Excel in Your Next Interview?
             </h2>
@@ -841,8 +842,8 @@ export function LandingPage() {
       </section>
 
       {/* ─── FOOTER ─── */}
-      <footer className="bg-[#040812] py-12 border-t border-white/10">
-        <div className="max-w-[1280px] mx-auto px-6 md:px-12">
+      <footer className="bg-[#040812] py-12 border-t border-white/10 w-full">
+        <div className="w-full px-6 md:px-12 lg:px-16">
           <div className="flex flex-col md:flex-row justify-between items-center gap-6">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-[#5b5cf6] flex items-center justify-center text-white font-bold">
@@ -863,6 +864,7 @@ export function LandingPage() {
           </div>
         </div>
       </footer>
+
     </div>
   );
 }

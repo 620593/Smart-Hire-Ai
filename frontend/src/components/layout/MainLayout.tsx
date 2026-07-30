@@ -8,10 +8,11 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-8">
+    <div className="min-h-screen bg-[#070c18] text-[#dae2fd] w-full m-0 p-0 overflow-x-hidden">
+      <main className="w-full min-h-screen m-0 p-0">
         {children ?? <Outlet />}
       </main>
     </div>
   );
 }
+
