@@ -152,7 +152,7 @@ export function LandingPage() {
     <div className="min-h-screen bg-[#070c18] text-[#dae2fd] font-sans selection:bg-[#5b5cf6] selection:text-white overflow-x-hidden">
       
       {/* ─── STICKY GLASS NAVBAR ─── */}
-      <nav className="bg-[#070c18]/90 backdrop-blur-xl border-b border-white/10 w-full sticky top-0 z-50 shadow-lg transition-all">
+      <nav className="fixed top-0 left-0 w-full z-50 bg-[#070c18]/90 backdrop-blur-xl border-b border-white/10 shadow-2xl transition-all">
         <div className="flex justify-between items-center px-6 md:px-12 lg:px-16 py-4 w-full">
           {/* Brand Logo */}
           <Link to="/" className="flex items-center gap-3 group">
@@ -197,7 +197,7 @@ export function LandingPage() {
       </nav>
 
       {/* ─── HERO SECTION ─── */}
-      <section className="relative pt-20 pb-20 px-6 md:px-12 lg:px-16 w-full overflow-hidden">
+      <section className="relative pt-28 md:pt-32 pb-20 px-6 md:px-12 lg:px-16 w-full overflow-hidden">
 
         {/* Ambient Gradient Orbs */}
         <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-gradient-to-tr from-[#5b5cf6]/20 via-purple-600/15 to-cyan-500/10 rounded-full blur-[140px] pointer-events-none" />
