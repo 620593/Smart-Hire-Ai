@@ -107,6 +107,20 @@ export const AdminService = {
     return data;
   },
 
+  async listCandidates(): Promise<User[]> {
+    try {
+      const { data } = await apiClient.get<User[]>("/admin/candidates");
+      return data;
+    } catch {
+      const { data } = await apiClient.get<User[]>("/admin/users");
+      return data.filter((u) =>
+        u.roles.some((r: any) =>
+          (typeof r === "string" ? r : r?.name ?? "").toLowerCase() === "candidate"
+        )
+      );
+    }
+  },
+
   async deactivateUser(userId: string): Promise<User> {
     const { data } = await apiClient.post<User>(`/admin/users/${userId}/deactivate`);
     return data;

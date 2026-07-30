@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logging import logger_factory
-from app.core.security.dependencies import get_current_admin
+from app.core.security.dependencies import get_current_admin, get_current_active_user
 from app.db.enums import UserRole
 from app.db.session import get_db
 from app.models.role import Role
@@ -170,6 +170,26 @@ async def list_all_users(
 ) -> list[User]:
     """Return every user on the platform (all roles)."""
     result = await db.execute(select(User).order_by(User.created_at.desc()))
+    return list(result.scalars().all())
+
+
+@router.get(
+    "/candidates",
+    response_model=list[CurrentUserResponse],
+    summary="List all candidate users",
+)
+async def list_all_candidates(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_active_user),
+) -> list[User]:
+    """Return every candidate user registered on the platform."""
+    query = (
+        select(User)
+        .join(User.roles)
+        .where(Role.name == UserRole.CANDIDATE)
+        .order_by(User.created_at.desc())
+    )
+    result = await db.execute(query)
     return list(result.scalars().all())
 
 

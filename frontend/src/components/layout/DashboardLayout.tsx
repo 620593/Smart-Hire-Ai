@@ -36,27 +36,15 @@ export function DashboardLayout() {
   const isAdmin = roles.includes("admin");
   const isRecruiter = roles.includes("recruiter");
 
-  const menuItems = isAdmin
+  const menuItems = isAdmin || isRecruiter
     ? [
-        { to: "/dashboard", label: "Dashboard",     icon: "dashboard"          },
-        { to: "/candidates", label: "Candidates",   icon: "group"              },
-        { to: "/reports",    label: "Reports",      icon: "analytics"          },
-        { to: "/ai-config",  label: "AI Config",    icon: "tune"               },
-        { to: "/audit-logs", label: "Audit Logs",   icon: "history"            },
-      ]
-    : isRecruiter
-    ? [
-        { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
-        { to: "/candidates", label: "Candidates", icon: "group" },
-        { to: "/reports", label: "Reports", icon: "analytics" },
-        { to: "/library", label: "Library", icon: "folder" },
-        { to: "/team", label: "Team", icon: "people" },
+        { to: "/dashboard",  label: "Dashboard",  icon: "dashboard" },
+        { to: "/candidates", label: "Candidates", icon: "group"     },
       ]
     : [
-        { to: "/dashboard",  label: "Dashboard",     icon: "dashboard" },
-        { to: "/resume",     label: "Resume",         icon: "description" },
+        { to: "/dashboard",  label: "Dashboard",       icon: "dashboard" },
+        { to: "/resume",     label: "Resume",          icon: "description" },
         { to: "/interviews", label: "Mock Interviews", icon: "videocam" },
-        { to: "/reports",    label: "AI Feedback",    icon: "chat_bubble" },
       ];
 
   const roleLabel = isAdmin
