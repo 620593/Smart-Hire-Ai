@@ -627,7 +627,7 @@ function ApiKeysTab() {
                     {key.is_set ? (
                       <>
                         <span className="text-xs font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded">
-                          {showKey[key.name] ? key.masked_value : "•••• •••• " + key.masked_value.slice(-4)}
+                          {showKey[key.name] ? key.masked_value : "•••• •••• " + (key.masked_value || "").slice(-4)}
                         </span>
                         <button onClick={() => setShowKey((p) => ({ ...p, [key.name]: !p[key.name] }))}
                           className="text-slate-500 hover:text-slate-300 transition-colors">

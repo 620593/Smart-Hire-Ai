@@ -128,12 +128,13 @@ function ScoreBar({ label, score, icon, delay = 0 }: ScoreBarProps) {
 }
 
 interface ChipListProps {
-  items: string[];
+  items?: string[];
   variant: "missing" | "improvement";
 }
 
-function ChipList({ items, variant }: ChipListProps) {
-  if (!items.length) {
+function ChipList({ items = [], variant }: ChipListProps) {
+  const safeItems = items ?? [];
+  if (!safeItems.length) {
     return (
       <p className="text-[11px] text-white/30 italic">None identified.</p>
     );
@@ -144,7 +145,7 @@ function ChipList({ items, variant }: ChipListProps) {
       : "bg-blue-500/10 border border-blue-500/20 text-blue-300";
   return (
     <div className="flex flex-wrap gap-2">
-      {items.map((item, i) => (
+      {safeItems.map((item, i) => (
         <motion.span
           key={i}
           initial={{ opacity: 0, scale: 0.8 }}
@@ -160,18 +161,19 @@ function ChipList({ items, variant }: ChipListProps) {
 }
 
 interface BulletListProps {
-  items: string[];
+  items?: string[];
   colour: string;
   icon: string;
 }
 
-function BulletList({ items, colour, icon }: BulletListProps) {
-  if (!items.length) {
+function BulletList({ items = [], colour, icon }: BulletListProps) {
+  const safeItems = items ?? [];
+  if (!safeItems.length) {
     return <p className="text-[11px] text-white/30 italic">None identified.</p>;
   }
   return (
     <ul className="space-y-2">
-      {items.map((item, i) => (
+      {safeItems.map((item, i) => (
         <motion.li
           key={i}
           initial={{ opacity: 0, x: -10 }}
@@ -235,11 +237,23 @@ export interface ATSScorePanelProps {
  * Drop inside any layout; it manages its own scroll if content overflows.
  */
 export function ATSScorePanel({ data }: ATSScorePanelProps) {
-  const { result, resume_filename, resume_pages, resume_length, jd_length } =
-    data;
-  const colour = scoreColour(result.overall_score);
-  const label = scoreLabel(result.overall_score);
-  const improvements = result["improvements to add"] ?? [];
+  if (!data || !data.result) {
+    return (
+      <div className="p-6 rounded-2xl bg-white/[0.03] border border-white/[0.07] text-center text-white/50 text-sm">
+        No ATS scoring data available.
+      </div>
+    );
+  }
+
+  const { result, resume_filename = "resume.pdf", resume_pages = 1, resume_length = 0, jd_length = 0 } = data;
+  const overallScore = result?.overall_score ?? 0;
+  const colour = scoreColour(overallScore);
+  const label = scoreLabel(overallScore);
+  const improvements = (result as any)?.["improvements to add"] ?? (result as any)?.improvements_to_add ?? [];
+  const strengths = result?.strengths ?? [];
+  const weaknesses = result?.weaknesses ?? [];
+  const missingSkills = result?.missing_skills ?? [];
+  const suggestions = result?.suggestions ?? [];
 
   return (
     <motion.div
@@ -249,7 +263,7 @@ export function ATSScorePanel({ data }: ATSScorePanelProps) {
     >
       {/* ── Header row ── */}
       <div className="flex flex-col sm:flex-row items-center gap-6 p-5 rounded-2xl bg-white/[0.03] border border-white/[0.07]">
-        <CircularGauge score={result.overall_score} />
+        <CircularGauge score={overallScore} />
 
         <div className="flex-1 space-y-1 text-center sm:text-left">
           <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">
@@ -260,10 +274,10 @@ export function ATSScorePanel({ data }: ATSScorePanelProps) {
             <span className="text-sm font-medium text-white/40">match</span>
           </h3>
           <p className="text-xs text-white/40 font-mono">
-            {resume_filename} · {resume_pages}p · {(resume_length / 1000).toFixed(1)}k chars
+            {resume_filename} · {resume_pages}p · {((resume_length || 0) / 1000).toFixed(1)}k chars
           </p>
           <p className="text-[10px] text-white/25 font-mono">
-            JD: {(jd_length / 1000).toFixed(1)}k chars
+            JD: {((jd_length || 0) / 1000).toFixed(1)}k chars
           </p>
         </div>
 
@@ -276,38 +290,38 @@ export function ATSScorePanel({ data }: ATSScorePanelProps) {
             backgroundColor: `${colour}15`,
           }}
         >
-          {result.overall_score}/100
+          {overallScore}/100
         </div>
       </div>
 
       {/* ── Dimension scores ── */}
       <SectionCard title="Dimension Scores" icon="equalizer" iconColour="#818cf8">
         <div className="space-y-3">
-          <ScoreBar label="Skill Match" score={result.skill_score} icon="code" delay={0.1} />
-          <ScoreBar label="Experience" score={result.experience_score} icon="work" delay={0.2} />
-          <ScoreBar label="Education" score={result.education_score} icon="school" delay={0.3} />
+          <ScoreBar label="Skill Match" score={result?.skill_score ?? 0} icon="code" delay={0.1} />
+          <ScoreBar label="Experience" score={result?.experience_score ?? 0} icon="work" delay={0.2} />
+          <ScoreBar label="Education" score={result?.education_score ?? 0} icon="school" delay={0.3} />
         </div>
       </SectionCard>
 
       {/* ── Two-column grid: strengths + weaknesses ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <SectionCard title="Strengths" icon="thumb_up" iconColour="#22c55e">
-          <BulletList items={result.strengths} colour="#22c55e" icon="check_circle" />
+          <BulletList items={strengths} colour="#22c55e" icon="check_circle" />
         </SectionCard>
 
         <SectionCard title="Weaknesses" icon="thumb_down" iconColour="#f97316">
-          <BulletList items={result.weaknesses} colour="#f97316" icon="cancel" />
+          <BulletList items={weaknesses} colour="#f97316" icon="cancel" />
         </SectionCard>
       </div>
 
       {/* ── Missing skills ── */}
       <SectionCard title="Missing Skills" icon="highlight_off" iconColour="#ef4444">
-        <ChipList items={result.missing_skills} variant="missing" />
+        <ChipList items={missingSkills} variant="missing" />
       </SectionCard>
 
       {/* ── Suggestions ── */}
       <SectionCard title="Suggestions" icon="tips_and_updates" iconColour="#38bdf8">
-        <BulletList items={result.suggestions} colour="#38bdf8" icon="arrow_forward" />
+        <BulletList items={suggestions} colour="#38bdf8" icon="arrow_forward" />
       </SectionCard>
 
       {/* ── Improvements to add ── */}

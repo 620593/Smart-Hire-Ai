@@ -226,7 +226,7 @@ export function DashboardPage() {
                     <span className="material-symbols-outlined text-sm">check_circle</span> Top Strengths
                   </span>
                   <ul className="space-y-1.5">
-                    {lastReport.result.strengths.slice(0, 3).map((s, i) => (
+                    {(lastReport?.result?.strengths ?? []).slice(0, 3).map((s: string, i: number) => (
                       <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
                         <span className="text-emerald-400">•</span>
                         <span>{s}</span>
@@ -240,7 +240,7 @@ export function DashboardPage() {
                     <span className="material-symbols-outlined text-sm">warning</span> Key Improvements
                   </span>
                   <ul className="space-y-1.5">
-                    {lastReport.result.improvement_areas.slice(0, 3).map((imp, i) => (
+                    {(lastReport?.result?.improvement_areas ?? (lastReport?.result as any)?.["improvements to add"] ?? []).slice(0, 3).map((imp: string, i: number) => (
                       <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
                         <span className="text-amber-400">•</span>
                         <span>{imp}</span>
