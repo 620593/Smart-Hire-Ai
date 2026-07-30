@@ -10,6 +10,7 @@ from app.api.v1.endpoints.resumes import router as resumes_router
 from app.api.v1.endpoints.admin import router as admin_router
 from app.api.v1.endpoints.ats import router as ats_router
 from app.api.v1.endpoints.interview import router as interview_router
+from app.api.v1.endpoints.help import router as help_router
 
 
 def create_api_v1_router(api_v1_prefix: str) -> APIRouter:
@@ -29,4 +30,5 @@ def create_api_v1_router(api_v1_prefix: str) -> APIRouter:
     router.include_router(admin_router)
     router.include_router(ats_router)
     router.include_router(interview_router)
-    return router
+    router.include_router(help_router)
+    return router
