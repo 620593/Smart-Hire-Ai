@@ -146,7 +146,6 @@ const FAQ_ITEMS = [
 export function LandingPage() {
   const [activeDemo, setActiveDemo] = useState(DEMO_QUESTIONS[0]);
   const [activeTab, setActiveTab] = useState(FEATURE_TABS[0].id);
-  const [isAnnual, setIsAnnual] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   return (
@@ -175,7 +174,6 @@ export function LandingPage() {
             <a href="#demo" className="text-sm font-medium text-[#8b9ec7] hover:text-white transition-colors">Live Demo</a>
             <a href="#features" className="text-sm font-medium text-[#8b9ec7] hover:text-white transition-colors">Features</a>
             <a href="#portals" className="text-sm font-medium text-[#8b9ec7] hover:text-white transition-colors">Portals</a>
-            <a href="#pricing" className="text-sm font-medium text-[#8b9ec7] hover:text-white transition-colors">Pricing</a>
             <a href="#faq" className="text-sm font-medium text-[#8b9ec7] hover:text-white transition-colors">FAQ</a>
           </div>
 
@@ -627,138 +625,6 @@ export function LandingPage() {
             <Link
               to="/recruiter-register"
               className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-center text-sm font-bold shadow-lg shadow-purple-600/25 transition-all"
-            >
-              Register Recruiter Portal
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── PRICING SECTION ─── */}
-      <section id="pricing" className="py-20 px-6 md:px-12 lg:px-16 w-full border-t border-white/10">
-        <div className="text-center max-w-3xl mx-auto mb-12">
-          <span className="text-xs font-mono font-bold text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-3.5 py-1 rounded-full border border-emerald-500/20">
-            Simple Pricing
-          </span>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mt-3">
-            Transparent Plans for Every Goal
-          </h2>
-          <p className="text-[#8b9ec7] text-sm md:text-base mt-2">
-            Start free, upgrade as you prepare or scale your hiring.
-          </p>
-
-          {/* Monthly / Annual Toggle */}
-          <div className="flex items-center justify-center gap-3 mt-6">
-            <span className={`text-xs font-semibold ${!isAnnual ? "text-white" : "text-[#8b9ec7]"}`}>Monthly</span>
-            <button
-              onClick={() => setIsAnnual(!isAnnual)}
-              className="w-12 h-6 rounded-full bg-[#141f38] border border-white/15 p-1 relative transition-colors"
-            >
-              <div
-                className={`w-4 h-4 rounded-full bg-[#5b5cf6] transition-transform ${
-                  isAnnual ? "translate-x-6" : "translate-x-0"
-                }`}
-              />
-            </button>
-            <span className={`text-xs font-semibold ${isAnnual ? "text-white" : "text-[#8b9ec7]"}`}>
-              Annual <span className="text-emerald-400 font-mono text-[10px]">(Save 20%)</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          {/* Starter Plan */}
-          <div className="bg-[#0f172a] border border-white/10 p-8 rounded-2xl flex flex-col justify-between">
-            <div>
-              <p className="text-xs font-mono font-bold text-[#8b9ec7] uppercase tracking-wider mb-2">Free Starter</p>
-              <h3 className="text-3xl font-extrabold text-white mb-4">$0</h3>
-              <p className="text-xs text-[#8b9ec7] mb-6">Perfect for trying out your first AI interview session.</p>
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
-                  <span className="material-symbols-outlined text-emerald-400 text-[18px]">check</span>
-                  <span>1 AI Practice Session / month</span>
-                </li>
-                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
-                  <span className="material-symbols-outlined text-emerald-400 text-[18px]">check</span>
-                  <span>Basic ATS Resume Scoring</span>
-                </li>
-                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
-                  <span className="material-symbols-outlined text-emerald-400 text-[18px]">check</span>
-                  <span>Standard Diagnostic Summary</span>
-                </li>
-              </ul>
-            </div>
-            <Link
-              to="/register"
-              className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-center text-sm font-bold transition-all"
-            >
-              Get Started Free
-            </Link>
-          </div>
-
-          {/* Pro Candidate Plan */}
-          <div className="bg-gradient-to-b from-[#17203d] to-[#0f172a] border-2 border-[#5b5cf6] p-8 rounded-2xl flex flex-col justify-between relative shadow-xl shadow-[#5b5cf6]/20">
-            <div className="absolute -top-3.5 right-6 px-3 py-1 bg-[#5b5cf6] text-white text-[10px] font-mono font-bold uppercase tracking-wider rounded-full shadow-md">
-              Most Popular
-            </div>
-            <div>
-              <p className="text-xs font-mono font-bold text-[#8182ff] uppercase tracking-wider mb-2">Candidate Pro</p>
-              <h3 className="text-3xl font-extrabold text-white mb-4">
-                ${isAnnual ? "15" : "19"} <span className="text-xs font-normal text-[#8b9ec7]">/ month</span>
-              </h3>
-              <p className="text-xs text-[#8b9ec7] mb-6">Unlimited AI practice and full diagnostic metrics.</p>
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-center gap-2 text-xs md:text-sm text-white">
-                  <span className="material-symbols-outlined text-[#8182ff] text-[18px]">check_circle</span>
-                  <span>Unlimited AI Video & Audio Practice</span>
-                </li>
-                <li className="flex items-center gap-2 text-xs md:text-sm text-white">
-                  <span className="material-symbols-outlined text-[#8182ff] text-[18px]">check_circle</span>
-                  <span>Full ATS Keyword & Formatting Analysis</span>
-                </li>
-                <li className="flex items-center gap-2 text-xs md:text-sm text-white">
-                  <span className="material-symbols-outlined text-[#8182ff] text-[18px]">check_circle</span>
-                  <span>Speech Pace & Tone Analytics</span>
-                </li>
-                <li className="flex items-center gap-2 text-xs md:text-sm text-white">
-                  <span className="material-symbols-outlined text-[#8182ff] text-[18px]">check_circle</span>
-                  <span>Exportable PDF Diagnostic Reports</span>
-                </li>
-              </ul>
-            </div>
-            <Link
-              to="/register"
-              className="w-full py-3 rounded-xl bg-[#5b5cf6] hover:bg-[#4b4ce6] text-white text-center text-sm font-bold shadow-lg shadow-[#5b5cf6]/30 transition-all"
-            >
-              Start Candidate Pro
-            </Link>
-          </div>
-
-          {/* Enterprise Recruiter Plan */}
-          <div className="bg-[#0f172a] border border-white/10 p-8 rounded-2xl flex flex-col justify-between">
-            <div>
-              <p className="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider mb-2">Recruiter Enterprise</p>
-              <h3 className="text-3xl font-extrabold text-white mb-4">Custom</h3>
-              <p className="text-xs text-[#8b9ec7] mb-6">Automated candidate screening for hiring teams.</p>
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
-                  <span className="material-symbols-outlined text-purple-400 text-[18px]">check</span>
-                  <span>Automated Candidate Screening Pipeline</span>
-                </li>
-                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
-                  <span className="material-symbols-outlined text-purple-400 text-[18px]">check</span>
-                  <span>Multi-Recruiter Account Management</span>
-                </li>
-                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
-                  <span className="material-symbols-outlined text-purple-400 text-[18px]">check</span>
-                  <span>Dedicated System Health Dashboard</span>
-                </li>
-              </ul>
-            </div>
-            <Link
-              to="/recruiter-register"
-              className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-center text-sm font-bold transition-all"
             >
               Register Recruiter Portal
             </Link>
