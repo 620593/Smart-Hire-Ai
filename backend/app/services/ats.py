@@ -23,7 +23,7 @@ from app.core.config import get_settings
 from app.core.logging import logger_factory
 from app.repositories.resume import ResumeRepository
 from app.schemas.ats import ATSSectionBreakdown, ATSScoreResponse, ATSScoreResult
-from app.utils.pdf_parser import parse_resume
+from app.utils.pdf_parser import parse_resume, parse_resume_from_bytes
 
 logger = logger_factory("app.services.ats")
 
@@ -292,17 +292,31 @@ class ATSService:
         # 3. Ensure Groq key is set
         self._validate_groq_key()
 
-        # 4. Parse the physical PDF
-        import os  # noqa: PLC0415 — local import to avoid polluting module namespace
+        # 4. Parse the PDF — environment-aware storage backend
+        import os
 
-        if not os.path.exists(resume.storage_path):
-            raise HTTPException(
-                status_code=404,
-                detail="Physical resume file not found on disk.",
-            )
+        production = os.environ.get("APP_ENV", "development").lower() == "production"
 
         try:
-            parsed = parse_resume(resume.storage_path)
+            if production:
+                # ── Render: fetch bytes from PostgreSQL BYTEA ──
+                pdf_bytes = await self.resume_repo.get_file_data(resume_id)
+                if not pdf_bytes:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Resume binary data not found in the database.",
+                    )
+                parsed = parse_resume_from_bytes(pdf_bytes)
+            else:
+                # ── Local: read from disk ──
+                if not resume.storage_path or not os.path.exists(resume.storage_path):
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Physical resume file not found on disk.",
+                    )
+                parsed = parse_resume(resume.storage_path)
+        except HTTPException:
+            raise
         except ValueError as exc:
             logger.error("PDF parsing failed for resume %s: %s", resume_id, exc)
             raise HTTPException(
