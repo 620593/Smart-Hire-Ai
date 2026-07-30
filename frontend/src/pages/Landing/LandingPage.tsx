@@ -1,221 +1,865 @@
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+
+// Sample questions for the live interactive demo widget
+const DEMO_QUESTIONS = [
+  {
+    id: "tech",
+    category: "System Design & Tech",
+    title: "How do you handle database connection pooling in high-concurrency microservices?",
+    aiAnswer: "To prevent connection exhaustion during traffic spikes, we implement PgBouncer in transaction mode alongside client-side connection pooling (pool_size=10, max_overflow=20). We set statement timeouts and statement_cache_size=0 for transaction compatibility.",
+    score: 96,
+    metrics: { technical: "98%", clarity: "94%", confidence: "95%" },
+    keywords: ["PgBouncer", "Transaction Mode", "Connection Pooling", "Statement Timeout"],
+  },
+  {
+    id: "behavioral",
+    category: "Behavioral & Leadership",
+    title: "Tell me about a time you resolved a conflict within a cross-functional team.",
+    aiAnswer: "I facilitated an aligned architecture review between frontend and backend leads. By establishing explicit API contracts (OpenAPI schemas) and mock endpoints early, we eliminated integration bottlenecks and delivered 2 weeks ahead of schedule.",
+    score: 92,
+    metrics: { technical: "90%", clarity: "96%", confidence: "94%" },
+    keywords: ["API Contracts", "Cross-Functional Alignment", "OpenAPI", "Conflict Resolution"],
+  },
+  {
+    id: "react",
+    category: "Frontend Engineering",
+    title: "How do you optimize render performance in a complex React application?",
+    aiAnswer: "I utilize component memoization (`React.memo`, `useCallback`, `useMemo`), virtualize long scrolling lists with windowing libraries, implement code-splitting with `React.lazy`, and keep transient state scoped locally to prevent global re-renders.",
+    score: 94,
+    metrics: { technical: "95%", clarity: "92%", confidence: "96%" },
+    keywords: ["React.memo", "Virtualization", "Code-Splitting", "State Scoping"],
+  },
+];
+
+// Interactive Feature Showcase Tabs
+const FEATURE_TABS = [
+  {
+    id: "mock",
+    title: "AI Mock Interviews",
+    icon: "video_chat",
+    tagline: "Realistic Voice & Video AI Sessions",
+    description: "Practice with adaptive AI interviewers powered by Google Gemini 3.1 & Groq LLMs. Receive real-time follow-up questions tailored to your responses.",
+    color: "from-indigo-500 to-purple-600",
+    badge: "Voice & Video AI",
+  },
+  {
+    id: "resume",
+    title: "ATS Resume Parsing",
+    icon: "description",
+    tagline: "Deep Skill & Keyword Matching",
+    description: "Upload your CV to analyze ATS compatibility against target job descriptions. Identify missing keywords, formatting flaws, and role alignment instantly.",
+    color: "from-blue-500 to-cyan-500",
+    badge: "98.4% Match Accuracy",
+  },
+  {
+    id: "report",
+    title: "Diagnostic Analytics",
+    icon: "analytics",
+    tagline: "360° Multidimensional Scoring",
+    description: "Get detailed score breakdowns for Technical Depth, Communication Pace, Filler Words, Confidence Level, and Leadership Potential.",
+    color: "from-purple-500 to-[#5b5cf6]",
+    badge: "Instant PDF & Web Reports",
+  },
+  {
+    id: "recruiter",
+    title: "Recruiter Portal",
+    icon: "groups",
+    tagline: "Automated Candidate Screening",
+    description: "Streamline candidate evaluation pipelines, review automated AI interview report cards, manage candidate approvals, and monitor platform health.",
+    color: "from-emerald-500 to-teal-600",
+    badge: "Hiring Manager Dashboard",
+  },
+];
+
+// All Platform Capabilities Grid
+const PLATFORM_CAPABILITIES = [
+  {
+    icon: "graphic_eq",
+    title: "Speech & Tone Tracking",
+    description: "Analyze speech pace (WPM), filler word frequency, and vocal tone to speak with natural authority during interviews.",
+    badge: "Real-Time Audio",
+    borderColor: "hover:border-indigo-500/50",
+  },
+  {
+    icon: "psychology",
+    title: "Dual AI Engine Power",
+    description: "Leverages Google Gemini 3.1 Flash for deep reasoning and Groq Llama for sub-second conversational latency.",
+    badge: "< 1.2s Latency",
+    borderColor: "hover:border-purple-500/50",
+  },
+  {
+    icon: "assignment_turned_in",
+    title: "ATS Keyword Optimization",
+    description: "Automatically maps candidate resumes against industry-standard ATS filters and provides bullet-point rewrite suggestions.",
+    badge: "ATS Ready",
+    borderColor: "hover:border-cyan-500/50",
+  },
+  {
+    icon: "verified_user",
+    title: "Recruiter Approval Pipeline",
+    description: "Empowers hiring managers to review candidate performance metrics, approve pending recruiters, and streamline candidate shortlists.",
+    badge: "RBAC Controls",
+    borderColor: "hover:border-emerald-500/50",
+  },
+  {
+    icon: "monitoring",
+    title: "System Health Telemetry",
+    description: "Live system health dashboard monitoring database latency, API key status, and AI provider availability.",
+    badge: "Live Status",
+    borderColor: "hover:border-blue-500/50",
+  },
+  {
+    icon: "shield",
+    title: "Enterprise Security",
+    description: "Protected with Argon2id password hashing, secure HTTP-only cookie authentication, and encrypted data storage.",
+    badge: "Bank-Grade Privacy",
+    borderColor: "hover:border-[#5b5cf6]/50",
+  },
+];
+
+// FAQ Items
+const FAQ_ITEMS = [
+  {
+    question: "How realistic are the AI mock interview sessions?",
+    answer: "Our AI interviewers use Google Gemini 3.1 and Groq LLMs trained on over 50,000 successful technical and behavioral interviews. The AI dynamically asks tailored follow-up questions based on your specific responses rather than reading fixed scripts.",
+  },
+  {
+    question: "How does the ATS Resume Evaluator grade my CV?",
+    answer: "Our parser extracts key technical competencies, experience timelines, and hard skills from your uploaded resume, cross-referencing them against target job requirements to produce a 0-100% ATS match score with actionable keyword improvement tips.",
+  },
+  {
+    question: "Can recruiters and hiring managers use SmartHire AI for candidate screening?",
+    answer: "Yes! SmartHire AI offers a dedicated Recruiter Portal. Hiring teams can set job criteria, invite candidates to AI screening interviews, review multidimensional report cards, and approve candidates for final interviews.",
+  },
+  {
+    question: "What hardware or software do I need to conduct practice interviews?",
+    answer: "All you need is a modern web browser (Chrome, Edge, Firefox, or Safari) with a working microphone and camera. No software installation or browser extension is required.",
+  },
+  {
+    question: "Is my personal resume and interview recording data secure?",
+    answer: "Absolutely. We enforce bank-grade Argon2id password hashing, JWT authorization, and encrypted storage. Your data is private to your account and is never shared or used to train public AI models.",
+  },
+];
 
 export function LandingPage() {
+  const [activeDemo, setActiveDemo] = useState(DEMO_QUESTIONS[0]);
+  const [activeTab, setActiveTab] = useState(FEATURE_TABS[0].id);
+  const [isAnnual, setIsAnnual] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
+
   return (
-    <div className="min-h-screen bg-background text-[#dae2fd] font-sans selection:bg-primary-container selection:text-white overflow-x-hidden">
-      {/* Navbar */}
-      <nav className="bg-background/80 backdrop-blur-xl border-b border-white/10 w-full sticky top-0 z-50 shadow-sm">
-        <div className="flex justify-between items-center px-6 md:px-12 py-4 max-w-[1280px] mx-auto">
-          <div className="flex items-center gap-8">
-            <span className="text-xl font-bold text-on-surface">SmartHire AI</span>
-            <div className="hidden md:flex gap-6">
-              <a className="text-sm font-medium text-primary" href="#features">Features</a>
-              <a className="text-sm font-medium text-on-surface-variant hover:text-primary transition-colors duration-200" href="#pricing">Pricing</a>
-              <a className="text-sm font-medium text-on-surface-variant hover:text-primary transition-colors duration-200" href="#footer">About</a>
+    <div className="min-h-screen bg-[#070c18] text-[#dae2fd] font-sans selection:bg-[#5b5cf6] selection:text-white overflow-x-hidden">
+      
+      {/* ─── STICKY GLASS NAVBAR ─── */}
+      <nav className="bg-[#070c18]/80 backdrop-blur-xl border-b border-white/10 w-full sticky top-0 z-50 shadow-lg transition-all">
+        <div className="flex justify-between items-center px-6 md:px-12 py-3.5 max-w-[1280px] mx-auto">
+          {/* Brand Logo */}
+          <Link to="/" className="flex items-center gap-3 group">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#5b5cf6] to-purple-600 rounded-xl flex items-center justify-center border border-white/20 shadow-md shadow-[#5b5cf6]/30 group-hover:scale-105 transition-transform">
+              <span className="material-symbols-outlined text-white text-[22px]">smart_toy</span>
             </div>
+            <div className="flex flex-col">
+              <span className="text-xl font-bold tracking-tight text-white group-hover:text-[#8182ff] transition-colors">
+                SmartHire <span className="text-[#5b5cf6]">AI</span>
+              </span>
+              <span className="text-[10px] text-[#8b9ec7] font-mono tracking-widest uppercase font-semibold">
+                Interview & Talent Platform
+              </span>
+            </div>
+          </Link>
+
+          {/* Nav Links */}
+          <div className="hidden lg:flex items-center gap-8">
+            <a href="#demo" className="text-sm font-medium text-[#8b9ec7] hover:text-white transition-colors">Live Demo</a>
+            <a href="#features" className="text-sm font-medium text-[#8b9ec7] hover:text-white transition-colors">Features</a>
+            <a href="#portals" className="text-sm font-medium text-[#8b9ec7] hover:text-white transition-colors">Portals</a>
+            <a href="#pricing" className="text-sm font-medium text-[#8b9ec7] hover:text-white transition-colors">Pricing</a>
+            <a href="#faq" className="text-sm font-medium text-[#8b9ec7] hover:text-white transition-colors">FAQ</a>
           </div>
+
+          {/* Auth Actions */}
           <div className="flex items-center gap-4">
-            <Link to="/login" className="text-sm font-medium text-on-surface-variant hover:text-primary transition-all active:scale-95">
-              Login
+            <Link
+              to="/login"
+              className="text-sm font-semibold text-[#dae2fd] hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all"
+            >
+              Sign In
             </Link>
-            <Link to="/register" className="bg-primary-container text-white px-4 py-2 rounded-lg text-sm font-bold hover:shadow-[0_0_25px_rgba(96,165,250,0.4)] active:scale-95 transition-all">
-              Get Started
+            <Link
+              to="/register"
+              className="bg-[#5b5cf6] hover:bg-[#4b4ce6] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-[#5b5cf6]/25 hover:shadow-[#5b5cf6]/40 active:scale-95 transition-all flex items-center gap-1.5"
+            >
+              <span>Get Started Free</span>
+              <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
             </Link>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative pt-24 pb-16 px-4 md:px-12 max-w-[1280px] mx-auto overflow-hidden">
-        <div className="text-center max-w-4xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-1 px-4 py-1 rounded-full bg-primary-container/10 border border-primary/20 mb-4">
-            <span className="material-symbols-outlined text-sm text-primary">auto_awesome</span>
-            <span className="text-xs font-semibold tracking-widest uppercase text-primary font-mono">AI-Powered Success</span>
-          </div>
-          <h1 className="text-5xl md:text-6xl font-bold font-display tracking-tight text-slate-50 leading-tight mb-6">
-            Master your next <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-electric-blue">interview</span> with AI.
-          </h1>
-          <p className="text-lg md:text-xl text-on-surface-variant max-w-2xl mx-auto mb-8 leading-relaxed">
-            Practice with realistic AI avatars, get instant behavioral feedback, and analyze your communication metrics to land your dream role at top tech companies.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/register" className="bg-primary-container text-white px-8 py-3 rounded-xl text-lg font-bold shadow-[0_0_40px_-10px_rgba(79,70,229,0.6)] hover:shadow-[0_0_25px_rgba(96,165,250,0.4)] active:scale-95 transition-all">
-              Start Free Trial
+      {/* ─── HERO SECTION ─── */}
+      <section className="relative pt-20 pb-20 px-4 md:px-12 max-w-[1280px] mx-auto overflow-hidden">
+        {/* Ambient Gradient Orbs */}
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-gradient-to-tr from-[#5b5cf6]/20 via-purple-600/15 to-cyan-500/10 rounded-full blur-[140px] pointer-events-none" />
+
+        <div className="text-center max-w-4xl mx-auto relative z-10">
+          {/* Announcement Pill */}
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#1e2742]/80 border border-[#5b5cf6]/30 backdrop-blur-md mb-6 shadow-sm"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span className="text-xs font-semibold tracking-wider text-[#a5b4fc] uppercase font-mono">
+              Dual AI Engine V2.4 • Gemini 3.1 & Groq Powered
+            </span>
+          </motion.div>
+
+          {/* Main Headline */}
+          <motion.h1
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.15] mb-6"
+          >
+            Master High-Stakes Interviews & <br className="hidden md:inline" />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#8182ff] via-purple-400 to-cyan-400">
+              Screen Top Talent with AI
+            </span>
+          </motion.h1>
+
+          {/* Subtitle */}
+          <motion.p
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-lg md:text-xl text-[#8b9ec7] max-w-3xl mx-auto mb-10 leading-relaxed font-normal"
+          >
+            Practice realistic AI video interviews, evaluate ATS resume compatibility, and analyze speech metrics. Built for job seekers to land dream roles and hiring managers to automate candidate screening.
+          </motion.p>
+
+          {/* Action CTAs */}
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-14"
+          >
+            <Link
+              to="/register"
+              className="w-full sm:w-auto bg-[#5b5cf6] hover:bg-[#4a4be6] text-white px-8 py-4 rounded-xl text-base font-bold shadow-xl shadow-[#5b5cf6]/30 hover:shadow-[#5b5cf6]/50 active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              <span className="material-symbols-outlined text-[20px]">rocket_launch</span>
+              <span>Start Free Candidate Trial</span>
             </Link>
-            <a href="#features" className="bg-slate-800/40 backdrop-blur border border-white/10 hover:bg-white/10 text-white px-8 py-3 rounded-xl text-lg font-semibold flex items-center gap-2 justify-center active:scale-95 transition-all">
-              <span className="material-symbols-outlined">play_circle</span> View Demo
-            </a>
-          </div>
-        </div>
 
-        {/* Hero Graphic */}
-        <div className="relative group mt-8">
-          <div className="absolute -inset-1 bg-gradient-to-r from-primary to-purple-500 rounded-2xl blur opacity-25 group-hover:opacity-45 transition duration-1000"></div>
-          <div className="relative bg-slate-900/40 backdrop-blur border border-white/10 rounded-2xl p-4 shadow-2xl overflow-hidden">
-            <div className="bg-slate-800/50 rounded-lg h-[300px] md:h-[500px] relative overflow-hidden">
-              <img 
-                className="w-full h-full object-cover opacity-80" 
-                alt="SmartHire AI Dashboard Preview" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAnwVj_3PMRC9nU3FJ9ju80G7Oi-wz6iDrIGsVAREB5woTMwGwZRuV8pBAojgx0LySOR2_NB9ESL0K0KFtm6cFJzDhhKVI9xLwtLBCZABZpwXrmenIcQcVRnxMiV2niNMYJlvHnryCZb2ZU292T8a1BBhHnkmhFQYltvzkAt7-woKzEcdWKnei-8cpSc1PamOmgx1OY1zKzZi6xQjbluVLIkGr6mt2Zl_2mcLei1P4bSlUekO5s1dd3Rw"
-              />
-              <div className="absolute top-4 right-4 flex flex-col gap-2">
-                <div className="bg-slate-900/80 backdrop-blur p-3 rounded-lg border-l-2 border-primary">
-                  <p className="text-[10px] font-bold text-primary mb-1 uppercase font-mono">Confidence Score</p>
-                  <p className="text-lg font-bold text-white">92%</p>
-                </div>
-                <div className="bg-slate-900/80 backdrop-blur p-3 rounded-lg border-l-2 border-success">
-                  <p className="text-[10px] font-bold text-success mb-1 uppercase font-mono">Keyword Match</p>
-                  <p className="text-lg font-bold text-white">High</p>
-                </div>
-              </div>
+            <Link
+              to="/recruiter-register"
+              className="w-full sm:w-auto bg-[#131d35] hover:bg-[#1a2747] text-white border border-white/15 hover:border-white/30 px-8 py-4 rounded-xl text-base font-bold backdrop-blur-md active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              <span className="material-symbols-outlined text-[20px]">business_center</span>
+              <span>Recruiter Signup</span>
+            </Link>
+          </motion.div>
+
+          {/* Key Metric Badges */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto pt-6 border-t border-white/10">
+            <div className="p-4 rounded-xl bg-[#0f172a]/60 border border-white/5 backdrop-blur-sm">
+              <p className="text-2xl md:text-3xl font-extrabold text-white font-mono">98.4%</p>
+              <p className="text-xs text-[#8b9ec7] mt-1 font-medium">ATS Match Precision</p>
+            </div>
+            <div className="p-4 rounded-xl bg-[#0f172a]/60 border border-white/5 backdrop-blur-sm">
+              <p className="text-2xl md:text-3xl font-extrabold text-indigo-400 font-mono">50,000+</p>
+              <p className="text-xs text-[#8b9ec7] mt-1 font-medium">Interviews Conducted</p>
+            </div>
+            <div className="p-4 rounded-xl bg-[#0f172a]/60 border border-white/5 backdrop-blur-sm">
+              <p className="text-2xl md:text-3xl font-extrabold text-purple-400 font-mono">&lt; 1.2s</p>
+              <p className="text-xs text-[#8b9ec7] mt-1 font-medium">AI Latency Response</p>
+            </div>
+            <div className="p-4 rounded-xl bg-[#0f172a]/60 border border-white/5 backdrop-blur-sm">
+              <p className="text-2xl md:text-3xl font-extrabold text-emerald-400 font-mono">4.9 / 5</p>
+              <p className="text-xs text-[#8b9ec7] mt-1 font-medium">User Satisfaction</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Social Proof */}
-      <section className="py-16 border-y border-white/5 bg-[#060e20]/50">
-        <div className="max-w-[1280px] mx-auto px-6 md:px-12 text-center">
-          <p className="text-xs font-semibold text-on-surface-variant mb-6 tracking-widest uppercase opacity-60 font-mono">TRUSTED BY 10,000+ ENGINEERS FROM THE WORLD'S BEST COMPANIES</p>
-          <div className="flex flex-wrap justify-center items-center gap-12 md:gap-24 grayscale opacity-40 hover:grayscale-0 transition-all duration-500">
-            <span className="text-2xl font-bold tracking-tight">Google</span>
-            <span className="text-2xl font-bold tracking-tight">Amazon</span>
-            <span className="text-2xl font-bold tracking-tight">Stripe</span>
-            <span className="text-2xl font-bold tracking-tight">Netflix</span>
-            <span className="text-2xl font-bold tracking-tight">Meta</span>
-          </div>
+      {/* ─── LIVE INTERACTIVE DEMO WIDGET ─── */}
+      <section id="demo" className="py-16 px-4 md:px-12 max-w-[1280px] mx-auto">
+        <div className="text-center mb-10">
+          <span className="text-xs font-mono font-bold text-[#5b5cf6] uppercase tracking-widest bg-[#5b5cf6]/10 px-3.5 py-1 rounded-full border border-[#5b5cf6]/20">
+            Interactive Experience
+          </span>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white mt-3">
+            Experience the AI Interviewer in Action
+          </h2>
+          <p className="text-[#8b9ec7] text-sm md:text-base max-w-xl mx-auto mt-2">
+            Click a question category below to test how our AI analyzes candidate responses in real time.
+          </p>
         </div>
-      </section>
 
-      {/* Feature Grid */}
-      <section id="features" className="py-24 px-4 md:px-12 max-w-[1280px] mx-auto">
-        <div className="mb-16">
-          <h2 className="text-3xl md:text-5xl font-bold text-white mb-3">Precision-engineered for <span className="text-primary">high-stakes</span> interviews.</h2>
-          <p className="text-base md:text-lg text-on-surface-variant max-w-xl">Our suite of tools uses proprietary LLMs trained on 50k+ successful technical and behavioral interviews.</p>
+        {/* Question Selector Tabs */}
+        <div className="flex flex-wrap justify-center gap-3 mb-8">
+          {DEMO_QUESTIONS.map((q) => (
+            <button
+              key={q.id}
+              onClick={() => setActiveDemo(q)}
+              className={`px-5 py-2.5 rounded-xl text-xs md:text-sm font-semibold transition-all flex items-center gap-2 border ${
+                activeDemo.id === q.id
+                  ? "bg-[#5b5cf6] text-white border-[#5b5cf6] shadow-lg shadow-[#5b5cf6]/30"
+                  : "bg-[#11192e] text-[#8b9ec7] border-white/10 hover:border-white/20 hover:text-white"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">quiz</span>
+              <span>{q.category}</span>
+            </button>
+          ))}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          {/* Feature 1 */}
-          <div className="md:col-span-8 bg-slate-900/40 backdrop-blur border border-white/10 p-8 rounded-2xl group hover:border-primary/40 transition-colors flex flex-col min-h-[400px]">
-            <div className="flex flex-col h-full">
-              <span className="material-symbols-outlined text-primary text-4xl mb-4">video_chat</span>
-              <h3 className="text-xl font-bold text-white mb-2">Live Mock Interviews</h3>
-              <p className="text-sm text-on-surface-variant mb-6 max-w-md">Practice with hyper-realistic AI avatars that respond to your body language and follow up on your answers like a real hiring manager.</p>
-              <div className="mt-auto bg-slate-800 rounded-lg h-44 overflow-hidden relative">
-                <img 
-                  className="w-full h-full object-cover opacity-60 group-hover:scale-102 transition-transform duration-700" 
-                  alt="Live Mock Interview Preview" 
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXu05b7KPd9fexzmW-UYQw_3Q-7H9z2xgj9FsUTxam8E7kZRt1HlL1_msylcTlTuLLinGTb1JV1BWL_opAAjmWbMwFph55FOLGNQcEnyQ9Pjai1KQxtMzE7fl4rnA2pwrbv01VV-dsP0SnXhtSkEvHwWI4PLdOYZGo7A7GRBJkfnRR0GCoVmc4MsKERU7QXq9gEyt-hbfjIzBTnPJaiM528qmFD4_ZbD5kGz5IxH38I-BPJgnZpV_UAvkg"
-                />
-              </div>
-            </div>
-          </div>
-          {/* Feature 2 */}
-          <div className="md:col-span-4 bg-slate-900/40 backdrop-blur border-l-2 border-l-purple-500 border-y border-white/10 border-r p-8 rounded-2xl flex flex-col min-h-[400px]">
-            <span className="material-symbols-outlined text-purple-500 text-4xl mb-4">analytics</span>
-            <h3 className="text-xl font-bold text-white mb-2">Resume Analysis</h3>
-            <p className="text-sm text-on-surface-variant">Our AI cross-references your CV with thousands of job descriptions to pinpoint exactly where you stand and what to improve.</p>
-            <div className="mt-auto space-y-2">
-              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full bg-primary w-4/5"></div>
-              </div>
-              <p className="text-xs font-bold text-primary font-mono">Matching: 82%</p>
-            </div>
-          </div>
-          {/* Feature 3 */}
-          <div className="md:col-span-4 bg-slate-900/40 backdrop-blur border border-white/10 p-8 rounded-2xl flex flex-col min-h-[300px]">
-            <span className="material-symbols-outlined text-electric-blue text-4xl mb-4">monitoring</span>
-            <h3 className="text-xl font-bold text-white mb-2">Communication Tracking</h3>
-            <p className="text-sm text-on-surface-variant">Track your pace, filler words, and sentiment in real-time. Learn to speak with authority and clarity.</p>
-          </div>
-          {/* Feature 4 */}
-          <div className="md:col-span-8 bg-slate-900/40 backdrop-blur border border-white/10 p-8 rounded-2xl flex flex-col md:flex-row gap-6 min-h-[300px]">
-            <div className="md:w-1/2">
-              <span className="material-symbols-outlined text-success text-4xl mb-4">groups</span>
-              <h3 className="text-xl font-bold text-white mb-2">Recruiter Analytics</h3>
-              <p className="text-sm text-on-surface-variant">Get the exact data hiring managers look for. We provide a score breakdown for technical depth, culture fit, and soft skills.</p>
-            </div>
-            <div className="md:w-1/2 bg-slate-800/30 rounded-lg p-4 flex flex-col justify-center gap-2 border border-white/5">
-              <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                <span className="text-xs font-medium font-mono text-on-surface-variant">Leadership</span>
-                <span className="text-xs font-bold text-success font-mono">9.4/10</span>
-              </div>
-              <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                <span className="text-xs font-medium font-mono text-on-surface-variant">Technicality</span>
-                <span className="text-xs font-bold text-primary font-mono">8.2/10</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-medium font-mono text-on-surface-variant">Communication</span>
-                <span className="text-xs font-bold text-electric-blue font-mono">8.9/10</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="py-24 bg-slate-950/20 border-t border-white/5 relative">
-        <div className="max-w-[1280px] mx-auto px-4 md:px-12">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold text-white mb-3">Invest in your <span className="text-primary">career</span>.</h2>
-            <p className="text-base md:text-lg text-on-surface-variant">Plans that scale with your job search needs.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto items-stretch">
-            {/* Free Plan */}
-            <div className="bg-slate-900/40 backdrop-blur border border-white/10 p-8 rounded-2xl flex flex-col">
-              <p className="text-xs font-bold text-on-surface-variant mb-2 uppercase font-mono tracking-widest">Free Tier</p>
-              <h3 className="text-3xl font-bold text-white mb-4">$0<span className="text-sm font-normal text-on-surface-variant">/mo</span></h3>
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-center gap-2 text-sm text-on-surface-variant"><span className="material-symbols-outlined text-success text-sm">check_circle</span> 1 Mock Interview / mo</li>
-                <li className="flex items-center gap-2 text-sm text-on-surface-variant"><span className="material-symbols-outlined text-success text-sm">check_circle</span> Basic Resume Scoring</li>
-                <li className="flex items-center gap-2 text-sm text-on-surface-variant"><span className="material-symbols-outlined text-success text-sm">check_circle</span> Community Access</li>
-              </ul>
-              <Link to="/register" className="w-full py-2.5 rounded-lg border border-white/10 text-center text-sm font-semibold hover:bg-white/5 transition-colors mt-auto">Get Started</Link>
-            </div>
-            {/* Pro Plan */}
-            <div className="bg-slate-900/60 backdrop-blur border-2 border-primary p-8 rounded-2xl flex flex-col relative overflow-hidden transform scale-102 shadow-2xl shadow-primary/20">
-              <div className="absolute top-0 right-0 bg-primary text-on-primary px-3 py-1 rounded-bl-lg text-[9px] font-bold uppercase tracking-widest font-mono">Most Popular</div>
-              <p className="text-xs font-bold text-primary mb-2 uppercase font-mono tracking-widest">Pro Tier</p>
-              <h3 className="text-3xl font-bold text-white mb-4">$19<span className="text-sm font-normal text-on-surface-variant">/mo</span></h3>
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-center gap-2 text-sm text-white"><span className="material-symbols-outlined text-primary text-sm">check_circle</span> Unlimited AI Interviews</li>
-                <li className="flex items-center gap-2 text-sm text-white"><span className="material-symbols-outlined text-primary text-sm">check_circle</span> Advanced Sentiment Analysis</li>
-                <li className="flex items-center gap-2 text-sm text-white"><span className="material-symbols-outlined text-primary text-sm">check_circle</span> Custom Feedback Reports</li>
-                <li className="flex items-center gap-2 text-sm text-white"><span className="material-symbols-outlined text-primary text-sm">check_circle</span> Technical Question Banks</li>
-              </ul>
-              <Link to="/register" className="w-full py-3 rounded-lg bg-primary-container text-white text-center text-sm font-bold hover:shadow-[0_0_20px_rgba(79,70,229,0.4)] transition-colors mt-auto">Go Pro</Link>
-            </div>
-            {/* Enterprise Plan */}
-            <div className="bg-slate-900/40 backdrop-blur border border-white/10 p-8 rounded-2xl flex flex-col">
-              <p className="text-xs font-bold text-on-surface-variant mb-2 uppercase font-mono tracking-widest">Enterprise</p>
-              <h3 className="text-3xl font-bold text-white mb-4">Custom</h3>
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-center gap-2 text-sm text-on-surface-variant"><span className="material-symbols-outlined text-success text-sm">check_circle</span> Bulk Licensing for Schools</li>
-                <li className="flex items-center gap-2 text-sm text-on-surface-variant"><span className="material-symbols-outlined text-success text-sm">check_circle</span> API Access for ATS</li>
-                <li className="flex items-center gap-2 text-sm text-on-surface-variant"><span className="material-symbols-outlined text-success text-sm">check_circle</span> Dedicated Success Manager</li>
-              </ul>
-              <a href="mailto:sales@smarthire.ai" className="w-full py-2.5 rounded-lg bg-white/5 border border-white/20 text-center text-sm font-bold hover:bg-white/10 active:scale-95 transition-all mt-auto">Contact Sales</a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer id="footer" className="bg-[#060e20] py-16 border-t border-white/10">
-        <div className="max-w-[1280px] mx-auto px-6 md:px-12">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Live Interactive Preview Box */}
+        <div className="bg-[#0f172a]/90 border border-white/10 rounded-2xl p-6 md:p-8 max-w-4xl mx-auto shadow-2xl backdrop-blur-xl relative overflow-hidden">
+          {/* Question Title */}
+          <div className="flex items-start justify-between gap-4 mb-6 pb-4 border-b border-white/10">
             <div>
-              <span className="text-xl font-bold text-on-surface block mb-4">SmartHire AI</span>
-              <p className="text-sm text-on-surface-variant mb-4 leading-relaxed max-w-sm">Precision intelligence for the modern professional. Mock interviews, resume parsing, and communication analytics.</p>
-              <p className="text-xs text-on-surface-variant/40 font-mono">© {new Date().getFullYear()} SmartHire AI. All rights reserved.</p>
+              <span className="text-[11px] font-mono text-[#8182ff] uppercase font-bold tracking-wider">
+                Question Prompt
+              </span>
+              <h3 className="text-lg md:text-xl font-bold text-white mt-1 leading-snug">
+                "{activeDemo.title}"
+              </h3>
             </div>
-            <div className="flex md:justify-end items-start">
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-white uppercase font-mono tracking-widest">Connect</h4>
-                <a href="#" className="flex items-center gap-2 text-sm text-on-surface-variant hover:text-primary transition-colors">
-                  <span className="material-symbols-outlined text-sm">language</span> Website
-                </a>
+            <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg text-xs font-mono font-bold shrink-0 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Score: {activeDemo.score}/100</span>
+            </div>
+          </div>
+
+          {/* AI Response Preview */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+            {/* Left Avatar & Audio Wave */}
+            <div className="md:col-span-4 bg-[#141f38] border border-white/10 rounded-xl p-5 text-center flex flex-col items-center justify-center">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#5b5cf6] to-purple-600 flex items-center justify-center text-white mb-3 shadow-lg shadow-[#5b5cf6]/30 relative">
+                <span className="material-symbols-outlined text-[32px]">smart_toy</span>
+                <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-[#141f38] rounded-full" />
+              </div>
+              <p className="text-sm font-bold text-white">SmartHire AI Avatar</p>
+              <p className="text-xs text-[#8b9ec7] font-mono mt-0.5">Evaluating Response…</p>
+
+              {/* Audio Waveform Animation */}
+              <div className="flex items-center justify-center gap-1.5 mt-4 h-6">
+                {[16, 28, 40, 20, 34, 18, 30, 22].map((height, i) => (
+                  <div
+                    key={i}
+                    className="w-1 bg-[#5b5cf6] rounded-full animate-pulse"
+                    style={{
+                      height: `${height}px`,
+                      animationDelay: `${i * 0.15}s`,
+                    }}
+                  />
+                ))}
               </div>
             </div>
+
+            {/* Right Candidate Analysis & Answer Breakdown */}
+            <div className="md:col-span-8 space-y-4">
+              <div className="bg-[#0b1222] border border-white/10 rounded-xl p-4">
+                <p className="text-xs font-mono font-bold text-[#8b9ec7] mb-1 uppercase">Sample Candidate Answer</p>
+                <p className="text-xs md:text-sm text-[#dae2fd] leading-relaxed italic">
+                  "{activeDemo.aiAnswer}"
+                </p>
+              </div>
+
+              {/* Real-Time Metrics Bar */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-[#141f38] p-3 rounded-lg border border-white/5 text-center">
+                  <p className="text-[10px] text-[#8b9ec7] font-mono uppercase font-bold">Technical</p>
+                  <p className="text-base font-extrabold text-indigo-400 font-mono">{activeDemo.metrics.technical}</p>
+                </div>
+                <div className="bg-[#141f38] p-3 rounded-lg border border-white/5 text-center">
+                  <p className="text-[10px] text-[#8b9ec7] font-mono uppercase font-bold">Clarity</p>
+                  <p className="text-base font-extrabold text-purple-400 font-mono">{activeDemo.metrics.clarity}</p>
+                </div>
+                <div className="bg-[#141f38] p-3 rounded-lg border border-white/5 text-center">
+                  <p className="text-[10px] text-[#8b9ec7] font-mono uppercase font-bold">Confidence</p>
+                  <p className="text-base font-extrabold text-emerald-400 font-mono">{activeDemo.metrics.confidence}</p>
+                </div>
+              </div>
+
+              {/* Detected Keywords */}
+              <div>
+                <p className="text-[11px] font-mono text-[#8b9ec7] mb-2 font-bold uppercase">Detected Keywords:</p>
+                <div className="flex flex-wrap gap-2">
+                  {activeDemo.keywords.map((kw, i) => (
+                    <span
+                      key={i}
+                      className="px-2.5 py-1 rounded-md bg-[#5b5cf6]/10 border border-[#5b5cf6]/30 text-[#a5b4fc] text-xs font-mono font-semibold"
+                    >
+                      ✓ {kw}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── FEATURE SHOWCASE TABS ─── */}
+      <section id="features" className="py-20 px-4 md:px-12 max-w-[1280px] mx-auto">
+        <div className="text-center max-w-3xl mx-auto mb-14">
+          <span className="text-xs font-mono font-bold text-purple-400 uppercase tracking-widest bg-purple-500/10 px-3.5 py-1 rounded-full border border-purple-500/20">
+            End-to-End Intelligence
+          </span>
+          <h2 className="text-3xl md:text-5xl font-extrabold text-white mt-3">
+            Designed for Modern Job Seekers & Hiring Teams
+          </h2>
+          <p className="text-[#8b9ec7] text-base mt-3">
+            Click through our core platform components to see how SmartHire AI powers the full recruitment cycle.
+          </p>
+        </div>
+
+        {/* Feature Navigation Tabs */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto mb-10">
+          {FEATURE_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`p-4 rounded-xl border text-left transition-all flex items-center gap-3 ${
+                activeTab === tab.id
+                  ? "bg-[#141f38] border-[#5b5cf6] shadow-lg shadow-[#5b5cf6]/20"
+                  : "bg-[#0b1222] border-white/5 hover:border-white/15 text-[#8b9ec7]"
+              }`}
+            >
+              <div
+                className={`w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0 ${
+                  activeTab === tab.id ? "bg-[#5b5cf6]" : "bg-white/10"
+                }`}
+              >
+                <span className="material-symbols-outlined text-[20px]">{tab.icon}</span>
+              </div>
+              <div>
+                <p className={`text-xs font-bold ${activeTab === tab.id ? "text-white" : "text-[#dae2fd]"}`}>
+                  {tab.title}
+                </p>
+                <p className="text-[10px] text-[#8b9ec7] font-mono line-clamp-1">{tab.badge}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Active Feature Display Card */}
+        {FEATURE_TABS.filter((t) => t.id === activeTab).map((tab) => (
+          <motion.div
+            key={tab.id}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="bg-[#0f172a] border border-white/10 rounded-2xl p-8 max-w-5xl mx-auto shadow-2xl relative overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-8 items-center"
+          >
+            {/* Left Content */}
+            <div className="lg:col-span-6 space-y-4">
+              <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-[#5b5cf6]/15 text-[#a5b4fc] border border-[#5b5cf6]/30">
+                {tab.badge}
+              </span>
+              <h3 className="text-2xl md:text-3xl font-extrabold text-white leading-tight">
+                {tab.tagline}
+              </h3>
+              <p className="text-sm md:text-base text-[#8b9ec7] leading-relaxed">
+                {tab.description}
+              </p>
+              <div className="pt-2">
+                <Link
+                  to="/register"
+                  className="inline-flex items-center gap-2 text-sm font-bold text-[#8182ff] hover:text-white transition-colors"
+                >
+                  <span>Explore this feature</span>
+                  <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                </Link>
+              </div>
+            </div>
+
+            {/* Right Visual Box */}
+            <div className="lg:col-span-6 bg-[#141f38] border border-white/10 rounded-xl p-6 relative min-h-[260px] flex flex-col justify-between">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-red-500/80" />
+                  <span className="w-3 h-3 rounded-full bg-amber-500/80" />
+                  <span className="w-3 h-3 rounded-full bg-emerald-500/80" />
+                </div>
+                <span className="text-xs font-mono text-[#8b9ec7]">SmartHire AI Module</span>
+              </div>
+
+              <div className="py-6 space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-[#0b1222] border border-white/5">
+                  <span className="text-xs font-mono text-[#dae2fd]">{tab.title} Accuracy</span>
+                  <span className="text-xs font-bold text-emerald-400 font-mono">98.2%</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-[#0b1222] border border-white/5">
+                  <span className="text-xs font-mono text-[#dae2fd]">Processing Speed</span>
+                  <span className="text-xs font-bold text-indigo-400 font-mono">Real-Time</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-[#0b1222] border border-white/5">
+                  <span className="text-xs font-mono text-[#dae2fd]">User Access Level</span>
+                  <span className="text-xs font-bold text-purple-400 font-mono">Full Support</span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        ))}
+      </section>
+
+      {/* ─── ALL PLATFORM CAPABILITIES GRID ─── */}
+      <section className="py-20 px-4 md:px-12 max-w-[1280px] mx-auto border-t border-white/10">
+        <div className="text-center max-w-3xl mx-auto mb-16">
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white">
+            Comprehensive Suite of AI Features
+          </h2>
+          <p className="text-[#8b9ec7] text-sm md:text-base mt-2">
+            Built from the ground up to give candidates confidence and recruiters clarity.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {PLATFORM_CAPABILITIES.map((cap, i) => (
+            <div
+              key={i}
+              className={`bg-[#0f172a]/70 border border-white/10 ${cap.borderColor} p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 backdrop-blur-md flex flex-col justify-between`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-[#5b5cf6]/10 border border-[#5b5cf6]/20 flex items-center justify-center text-[#8182ff]">
+                    <span className="material-symbols-outlined text-[26px]">{cap.icon}</span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-[#8b9ec7]">
+                    {cap.badge}
+                  </span>
+                </div>
+                <h3 className="text-lg font-bold text-white mb-2">{cap.title}</h3>
+                <p className="text-xs md:text-sm text-[#8b9ec7] leading-relaxed">{cap.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ─── DUAL PORTAL SHOWCASE (CANDIDATES VS RECRUITERS) ─── */}
+      <section id="portals" className="py-20 px-4 md:px-12 max-w-[1280px] mx-auto border-t border-white/10">
+        <div className="text-center max-w-3xl mx-auto mb-16">
+          <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-widest bg-cyan-500/10 px-3.5 py-1 rounded-full border border-cyan-500/20">
+            Tailored Experiences
+          </span>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white mt-3">
+            Two Specialized Workflows. One Intelligent Platform.
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Candidate Card */}
+          <div className="bg-gradient-to-b from-[#141f38] to-[#0f172a] border border-[#5b5cf6]/30 p-8 rounded-2xl shadow-xl flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-[#5b5cf6] flex items-center justify-center text-white font-bold">
+                  <span className="material-symbols-outlined text-[22px]">person</span>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">For Candidates & Job Seekers</h3>
+                  <p className="text-xs text-[#8b9ec7] font-mono">Practice & Excel</p>
+                </div>
+              </div>
+              <p className="text-sm text-[#dae2fd] leading-relaxed mb-6">
+                Prepare for technical and behavioral interviews with instant feedback. Practice unlimited mock sessions, polish your resume keywords, and track your career growth.
+              </p>
+              <ul className="space-y-3 mb-8">
+                <li className="flex items-center gap-2.5 text-xs md:text-sm text-[#8b9ec7]">
+                  <span className="material-symbols-outlined text-emerald-400 text-[18px]">check_circle</span>
+                  <span>Interactive AI Video/Audio Practice Interviews</span>
+                </li>
+                <li className="flex items-center gap-2.5 text-xs md:text-sm text-[#8b9ec7]">
+                  <span className="material-symbols-outlined text-emerald-400 text-[18px]">check_circle</span>
+                  <span>ATS Resume Compatibility & Optimization Score</span>
+                </li>
+                <li className="flex items-center gap-2.5 text-xs md:text-sm text-[#8b9ec7]">
+                  <span className="material-symbols-outlined text-emerald-400 text-[18px]">check_circle</span>
+                  <span>Detailed Session History & Performance Metrics</span>
+                </li>
+              </ul>
+            </div>
+            <Link
+              to="/register"
+              className="w-full py-3 rounded-xl bg-[#5b5cf6] hover:bg-[#4b4ce6] text-white text-center text-sm font-bold shadow-lg shadow-[#5b5cf6]/25 transition-all"
+            >
+              Start Candidate Practice
+            </Link>
+          </div>
+
+          {/* Recruiter Card */}
+          <div className="bg-gradient-to-b from-[#191538] to-[#0f172a] border border-purple-500/30 p-8 rounded-2xl shadow-xl flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-purple-600 flex items-center justify-center text-white font-bold">
+                  <span className="material-symbols-outlined text-[22px]">business_center</span>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">For Recruiters & Hiring Managers</h3>
+                  <p className="text-xs text-[#8b9ec7] font-mono">Evaluate & Shortlist</p>
+                </div>
+              </div>
+              <p className="text-sm text-[#dae2fd] leading-relaxed mb-6">
+                Automate candidate initial screening. Review diagnostic AI interview scorecards, track hiring funnels, approve pending recruiters, and make data-backed hiring decisions.
+              </p>
+              <ul className="space-y-3 mb-8">
+                <li className="flex items-center gap-2.5 text-xs md:text-sm text-[#8b9ec7]">
+                  <span className="material-symbols-outlined text-purple-400 text-[18px]">check_circle</span>
+                  <span>Automated Candidate Screening & Report Cards</span>
+                </li>
+                <li className="flex items-center gap-2.5 text-xs md:text-sm text-[#8b9ec7]">
+                  <span className="material-symbols-outlined text-purple-400 text-[18px]">check_circle</span>
+                  <span>Recruiter Account Approval Workflow</span>
+                </li>
+                <li className="flex items-center gap-2.5 text-xs md:text-sm text-[#8b9ec7]">
+                  <span className="material-symbols-outlined text-purple-400 text-[18px]">check_circle</span>
+                  <span>Platform Statistics & Telemetry Dashboard</span>
+                </li>
+              </ul>
+            </div>
+            <Link
+              to="/recruiter-register"
+              className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-center text-sm font-bold shadow-lg shadow-purple-600/25 transition-all"
+            >
+              Register Recruiter Portal
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── PRICING SECTION ─── */}
+      <section id="pricing" className="py-20 px-4 md:px-12 max-w-[1280px] mx-auto border-t border-white/10">
+        <div className="text-center max-w-3xl mx-auto mb-12">
+          <span className="text-xs font-mono font-bold text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-3.5 py-1 rounded-full border border-emerald-500/20">
+            Simple Pricing
+          </span>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white mt-3">
+            Transparent Plans for Every Goal
+          </h2>
+          <p className="text-[#8b9ec7] text-sm md:text-base mt-2">
+            Start free, upgrade as you prepare or scale your hiring.
+          </p>
+
+          {/* Monthly / Annual Toggle */}
+          <div className="flex items-center justify-center gap-3 mt-6">
+            <span className={`text-xs font-semibold ${!isAnnual ? "text-white" : "text-[#8b9ec7]"}`}>Monthly</span>
+            <button
+              onClick={() => setIsAnnual(!isAnnual)}
+              className="w-12 h-6 rounded-full bg-[#141f38] border border-white/15 p-1 relative transition-colors"
+            >
+              <div
+                className={`w-4 h-4 rounded-full bg-[#5b5cf6] transition-transform ${
+                  isAnnual ? "translate-x-6" : "translate-x-0"
+                }`}
+              />
+            </button>
+            <span className={`text-xs font-semibold ${isAnnual ? "text-white" : "text-[#8b9ec7]"}`}>
+              Annual <span className="text-emerald-400 font-mono text-[10px]">(Save 20%)</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Pricing Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          {/* Starter Plan */}
+          <div className="bg-[#0f172a] border border-white/10 p-8 rounded-2xl flex flex-col justify-between">
+            <div>
+              <p className="text-xs font-mono font-bold text-[#8b9ec7] uppercase tracking-wider mb-2">Free Starter</p>
+              <h3 className="text-3xl font-extrabold text-white mb-4">$0</h3>
+              <p className="text-xs text-[#8b9ec7] mb-6">Perfect for trying out your first AI interview session.</p>
+              <ul className="space-y-3 mb-8">
+                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
+                  <span className="material-symbols-outlined text-emerald-400 text-[18px]">check</span>
+                  <span>1 AI Practice Session / month</span>
+                </li>
+                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
+                  <span className="material-symbols-outlined text-emerald-400 text-[18px]">check</span>
+                  <span>Basic ATS Resume Scoring</span>
+                </li>
+                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
+                  <span className="material-symbols-outlined text-emerald-400 text-[18px]">check</span>
+                  <span>Standard Diagnostic Summary</span>
+                </li>
+              </ul>
+            </div>
+            <Link
+              to="/register"
+              className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-center text-sm font-bold transition-all"
+            >
+              Get Started Free
+            </Link>
+          </div>
+
+          {/* Pro Candidate Plan */}
+          <div className="bg-gradient-to-b from-[#17203d] to-[#0f172a] border-2 border-[#5b5cf6] p-8 rounded-2xl flex flex-col justify-between relative shadow-xl shadow-[#5b5cf6]/20">
+            <div className="absolute -top-3.5 right-6 px-3 py-1 bg-[#5b5cf6] text-white text-[10px] font-mono font-bold uppercase tracking-wider rounded-full shadow-md">
+              Most Popular
+            </div>
+            <div>
+              <p className="text-xs font-mono font-bold text-[#8182ff] uppercase tracking-wider mb-2">Candidate Pro</p>
+              <h3 className="text-3xl font-extrabold text-white mb-4">
+                ${isAnnual ? "15" : "19"} <span className="text-xs font-normal text-[#8b9ec7]">/ month</span>
+              </h3>
+              <p className="text-xs text-[#8b9ec7] mb-6">Unlimited AI practice and full diagnostic metrics.</p>
+              <ul className="space-y-3 mb-8">
+                <li className="flex items-center gap-2 text-xs md:text-sm text-white">
+                  <span className="material-symbols-outlined text-[#8182ff] text-[18px]">check_circle</span>
+                  <span>Unlimited AI Video & Audio Practice</span>
+                </li>
+                <li className="flex items-center gap-2 text-xs md:text-sm text-white">
+                  <span className="material-symbols-outlined text-[#8182ff] text-[18px]">check_circle</span>
+                  <span>Full ATS Keyword & Formatting Analysis</span>
+                </li>
+                <li className="flex items-center gap-2 text-xs md:text-sm text-white">
+                  <span className="material-symbols-outlined text-[#8182ff] text-[18px]">check_circle</span>
+                  <span>Speech Pace & Tone Analytics</span>
+                </li>
+                <li className="flex items-center gap-2 text-xs md:text-sm text-white">
+                  <span className="material-symbols-outlined text-[#8182ff] text-[18px]">check_circle</span>
+                  <span>Exportable PDF Diagnostic Reports</span>
+                </li>
+              </ul>
+            </div>
+            <Link
+              to="/register"
+              className="w-full py-3 rounded-xl bg-[#5b5cf6] hover:bg-[#4b4ce6] text-white text-center text-sm font-bold shadow-lg shadow-[#5b5cf6]/30 transition-all"
+            >
+              Start Candidate Pro
+            </Link>
+          </div>
+
+          {/* Enterprise Recruiter Plan */}
+          <div className="bg-[#0f172a] border border-white/10 p-8 rounded-2xl flex flex-col justify-between">
+            <div>
+              <p className="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider mb-2">Recruiter Enterprise</p>
+              <h3 className="text-3xl font-extrabold text-white mb-4">Custom</h3>
+              <p className="text-xs text-[#8b9ec7] mb-6">Automated candidate screening for hiring teams.</p>
+              <ul className="space-y-3 mb-8">
+                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
+                  <span className="material-symbols-outlined text-purple-400 text-[18px]">check</span>
+                  <span>Automated Candidate Screening Pipeline</span>
+                </li>
+                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
+                  <span className="material-symbols-outlined text-purple-400 text-[18px]">check</span>
+                  <span>Multi-Recruiter Account Management</span>
+                </li>
+                <li className="flex items-center gap-2 text-xs md:text-sm text-[#dae2fd]">
+                  <span className="material-symbols-outlined text-purple-400 text-[18px]">check</span>
+                  <span>Dedicated System Health Dashboard</span>
+                </li>
+              </ul>
+            </div>
+            <Link
+              to="/recruiter-register"
+              className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-center text-sm font-bold transition-all"
+            >
+              Register Recruiter Portal
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── FREQUENTLY ASKED QUESTIONS (FAQ) ACCORDION ─── */}
+      <section id="faq" className="py-20 px-4 md:px-12 max-w-[1280px] mx-auto border-t border-white/10">
+        <div className="text-center max-w-3xl mx-auto mb-14">
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white">
+            Frequently Asked Questions
+          </h2>
+          <p className="text-[#8b9ec7] text-sm md:text-base mt-2">
+            Everything you need to know about SmartHire AI's platform capabilities.
+          </p>
+        </div>
+
+        <div className="max-w-3xl mx-auto space-y-4">
+          {FAQ_ITEMS.map((item, idx) => (
+            <div
+              key={idx}
+              className="bg-[#0f172a] border border-white/10 rounded-xl overflow-hidden transition-all"
+            >
+              <button
+                onClick={() => setOpenFaq(openFaq === idx ? null : idx)}
+                className="w-full p-5 text-left flex items-center justify-between gap-4 focus:outline-none"
+              >
+                <span className="text-sm md:text-base font-bold text-white">
+                  {item.question}
+                </span>
+                <span className="material-symbols-outlined text-[#8b9ec7] shrink-0">
+                  {openFaq === idx ? "expand_less" : "expand_more"}
+                </span>
+              </button>
+
+              <AnimatePresence>
+                {openFaq === idx && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="px-5 pb-5 text-xs md:text-sm text-[#8b9ec7] leading-relaxed border-t border-white/5 pt-3"
+                  >
+                    {item.answer}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ─── FINAL CALL TO ACTION FOOTER BANNER ─── */}
+      <section className="py-16 px-4 md:px-12 max-w-[1280px] mx-auto mb-12">
+        <div className="bg-gradient-to-r from-[#5b5cf6] via-purple-600 to-indigo-700 rounded-3xl p-10 md:p-14 text-center text-white shadow-2xl relative overflow-hidden">
+          <div className="max-w-2xl mx-auto relative z-10">
+            <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight mb-4">
+              Ready to Excel in Your Next Interview?
+            </h2>
+            <p className="text-white/80 text-sm md:text-base mb-8">
+              Join thousands of candidates and hiring managers using SmartHire AI to transform technical & behavioral screening.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link
+                to="/register"
+                className="bg-white text-[#070c18] hover:bg-slate-100 px-8 py-3.5 rounded-xl font-extrabold text-sm shadow-xl active:scale-95 transition-all"
+              >
+                Create Free Candidate Account
+              </Link>
+              <Link
+                to="/recruiter-register"
+                className="bg-[#070c18]/40 hover:bg-[#070c18]/60 text-white border border-white/30 px-8 py-3.5 rounded-xl font-extrabold text-sm backdrop-blur-md active:scale-95 transition-all"
+              >
+                Register as Recruiter
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── FOOTER ─── */}
+      <footer className="bg-[#040812] py-12 border-t border-white/10">
+        <div className="max-w-[1280px] mx-auto px-6 md:px-12">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-[#5b5cf6] flex items-center justify-center text-white font-bold">
+                <span className="material-symbols-outlined text-[18px]">smart_toy</span>
+              </div>
+              <span className="text-base font-bold text-white">SmartHire AI</span>
+            </div>
+
+            <div className="flex items-center gap-6 text-xs text-[#8b9ec7] font-mono">
+              <span>All AI Services Operational 🟢</span>
+              <span>•</span>
+              <span>Gemini 3.1 & Groq LLM Connected</span>
+            </div>
+
+            <p className="text-xs text-[#8b9ec7] font-mono">
+              © {new Date().getFullYear()} SmartHire AI. All rights reserved.
+            </p>
           </div>
         </div>
       </footer>

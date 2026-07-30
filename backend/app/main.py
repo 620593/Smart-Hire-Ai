@@ -57,22 +57,37 @@ def create_app() -> FastAPI:
     # ── CORS — must be added LAST so it is the outermost middleware ──
     raw_origins = settings.cors_allowed_origins
     if isinstance(raw_origins, (list, tuple, set)):
-        origins_list = [str(o) for o in raw_origins]
+        origins_list = [str(o).strip() for o in raw_origins]
+    elif isinstance(raw_origins, str):
+        origins_list = [o.strip() for o in raw_origins.split(",") if o.strip()]
     else:
-        origins_list = [str(raw_origins)]
+        origins_list = ["*"]
 
-    # When allow_credentials=True, W3C spec forbids wildcard '*'.
-    # Use allow_origin_regex to dynamically echo requesting origin for Render & localhost.
     has_wildcard = "*" in origins_list
-    application.add_middleware(
-        CORSMiddleware,
-        allow_origins=[] if has_wildcard else origins_list,
-        allow_origin_regex=r"https://.*\.onrender\.com|http://localhost:\d+|http://127\.0\.0\.1:\d+" if has_wildcard else None,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["*"],
-    )
+
+    if has_wildcard:
+        # W3C forbids wildcard + credentials: use regex to echo exact requesting origin
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=[],
+            allow_origin_regex=r"https://.*\.onrender\.com|http://localhost:\d+|http://127\.0\.0\.1:\d+",
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=["*"],
+        )
+    else:
+        # Use exact origins list (safe with credentials)
+        # Also add regex for any *.onrender.com subdomain in case Render changes URLs
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins_list,
+            allow_origin_regex=r"https://.*\.onrender\.com|http://localhost:\d+|http://127\.0\.0\.1:\d+",
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=["*"],
+        )
 
 
     application.include_router(create_api_router(settings.api_v1_prefix))
