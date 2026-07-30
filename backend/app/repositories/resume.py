@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.resume import Resume
 
+
 class ResumeRepository:
     """Implement database operations for Resumes."""
 
@@ -13,13 +14,15 @@ class ResumeRepository:
         self,
         user_id: UUID,
         original_filename: str,
-        stored_filename: str,
-        storage_path: str,
         file_size: int,
         mime_type: str,
-        status: str = "pending"
+        file_data: bytes,
+        status: str = "pending",
+        # Legacy disk fields kept as optional kwargs for backward-compat
+        stored_filename: str | None = None,
+        storage_path: str | None = None,
     ) -> Resume:
-        """Create and persist a new resume record."""
+        """Create and persist a new resume record with PDF bytes stored in DB."""
         resume = Resume(
             user_id=user_id,
             original_filename=original_filename,
@@ -27,7 +30,8 @@ class ResumeRepository:
             storage_path=storage_path,
             file_size=file_size,
             mime_type=mime_type,
-            status=status
+            file_data=file_data,
+            status=status,
         )
         self.db.add(resume)
         await self.db.commit()
@@ -35,14 +39,28 @@ class ResumeRepository:
         return resume
 
     async def find_resume(self, resume_id: UUID) -> Resume | None:
-        """Find a resume by its ID."""
+        """Find a resume by its ID (metadata only, no binary data loaded)."""
         query = select(Resume).where(Resume.id == resume_id)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_file_data(self, resume_id: UUID) -> bytes | None:
+        """Fetch the raw PDF binary bytes for a resume from the database.
+
+        Returns None if the resume does not exist or has no stored binary.
+        """
+        query = select(Resume.file_data).where(Resume.id == resume_id)
+        result = await self.db.execute(query)
+        row = result.scalar_one_or_none()
+        return row  # bytes or None
+
     async def list_user_resumes(self, user_id: UUID) -> list[Resume]:
-        """Retrieve all resumes owned by a specific user."""
-        query = select(Resume).where(Resume.user_id == user_id).order_by(Resume.uploaded_at.desc())
+        """Retrieve all resumes owned by a specific user (metadata only)."""
+        query = (
+            select(Resume)
+            .where(Resume.user_id == user_id)
+            .order_by(Resume.uploaded_at.desc())
+        )
         result = await self.db.execute(query)
         return list(result.scalars().all())
 

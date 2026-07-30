@@ -1,7 +1,8 @@
 from uuid import UUID
 from typing import Optional
+import io
 from fastapi import APIRouter, Depends, File, UploadFile, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -16,6 +17,7 @@ from app.schemas.resume import (
 )
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
+
 
 @router.post("/upload", response_model=ResumeUploadResponse)
 async def upload_resume(
@@ -92,16 +94,16 @@ async def download_resume_file(
     service = ResumeService(db)
     user_roles = [role.name for role in current_user.roles]
 
-    storage_path, filename, mime_type = await service.download_resume(
+    pdf_bytes, filename, mime_type = await service.download_resume(
         resume_id=id,
         current_user_id=current_user.id,
-        current_user_roles=user_roles
+        current_user_roles=user_roles,
     )
 
-    return FileResponse(
-        path=storage_path,
-        filename=filename,
-        media_type=mime_type
+    return StreamingResponse(
+        content=io.BytesIO(pdf_bytes),
+        media_type=mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 @router.get("/{id}/text")
@@ -117,14 +119,21 @@ async def get_resume_text(
     service = ResumeService(db)
     user_roles = [role.name for role in current_user.roles]
 
-    storage_path, _, _ = await service.download_resume(
-        resume_id=id,
-        current_user_id=current_user.id,
-        current_user_roles=user_roles
-    )
-
+    # Fetch PDF bytes from the environment-appropriate storage backend
     try:
-        result = parse_resume(storage_path)
+        pdf_bytes, _ = await service.get_resume_bytes(
+            resume_id=id,
+            current_user_id=current_user.id,
+            current_user_roles=user_roles,
+        )
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Resume not found or unreadable: {e}")
+
+    # Parse PDF from in-memory bytes (no temp file written)
+    try:
+        from app.utils.pdf_parser import parse_resume_from_bytes
+        result = parse_resume_from_bytes(pdf_bytes)
         text = result.get("text", "") if isinstance(result, dict) else str(result)
     except Exception as e:
         from fastapi import HTTPException

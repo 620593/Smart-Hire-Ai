@@ -288,3 +288,101 @@ def parse_resume(pdf_path: str) -> dict[str, Any]:
         "length": len(cleaned),
         "pages": page_count,
     }
+
+
+# ---------------------------------------------------------------------------
+# In-memory entry point (production / no-disk path)
+# ---------------------------------------------------------------------------
+
+
+def parse_pdf_from_bytes(pdf_bytes: bytes) -> str:
+    """Extract the richest text from a PDF supplied as raw bytes.
+
+    Mirrors ``parse_pdf`` but accepts a ``bytes`` object instead of a file path.
+    Uses both PyMuPDF (via ``fitz.open(stream=…)``) and pdfplumber (via
+    ``io.BytesIO``) and returns whichever engine produces the longer output.
+
+    Args:
+        pdf_bytes: Raw binary content of a PDF file.
+
+    Returns:
+        Best-quality raw extracted text.
+
+    Raises:
+        ValueError: If both engines fail to extract any text.
+    """
+    import io as _io
+
+    text_pymupdf: str = ""
+    text_pdfplumber: str = ""
+
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        pages: list[str] = []
+        for page in doc:
+            t = page.get_text("text")
+            if t:
+                pages.append(t)
+        doc.close()
+        text_pymupdf = "\n".join(pages)
+    except Exception:
+        pass
+
+    try:
+        with pdfplumber.open(_io.BytesIO(pdf_bytes)) as pdf:
+            pages = []
+            for page in pdf.pages:
+                t = page.extract_text()
+                if t:
+                    pages.append(t)
+            text_pdfplumber = "\n".join(pages)
+    except Exception:
+        pass
+
+    if not text_pymupdf and not text_pdfplumber:
+        raise ValueError(
+            "Both PDF parsers failed to extract text from the provided bytes. "
+            "The file may be image-only or corrupted."
+        )
+
+    return text_pymupdf if len(text_pymupdf) >= len(text_pdfplumber) else text_pdfplumber
+
+
+def parse_resume_from_bytes(pdf_bytes: bytes) -> dict[str, Any]:
+    """Full pipeline from raw bytes: extract → clean → section-detect.
+
+    Drop-in replacement for ``parse_resume`` that accepts bytes instead of a
+    file path.  Used by the production storage path so no temp file is created.
+
+    Args:
+        pdf_bytes: Raw binary content of a PDF file.
+
+    Returns:
+        Dictionary with keys:
+        - ``text``: Full cleaned resume text.
+        - ``sections``: Section-keyed dictionary of text fragments.
+        - ``length``: Character count of the cleaned text.
+        - ``pages``: Number of pages in the PDF.
+
+    Raises:
+        ValueError: If the PDF cannot be parsed.
+    """
+    raw_text = parse_pdf_from_bytes(pdf_bytes)
+    cleaned = clean_text(raw_text)
+    sections = detect_sections(cleaned)
+
+    page_count = 0
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        page_count = len(doc)
+        doc.close()
+    except Exception:
+        pass
+
+    return {
+        "text": cleaned,
+        "sections": sections,
+        "length": len(cleaned),
+        "pages": page_count,
+    }
+

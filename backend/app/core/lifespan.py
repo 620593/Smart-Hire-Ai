@@ -69,6 +69,71 @@ async def _create_static_schema() -> None:
         logger.warning("Static schema creation notice: %s", exc)
 
 
+async def _run_db_migrations() -> None:
+    """Apply safe, idempotent schema migrations without Alembic.
+
+    Adds the ``file_data`` BYTEA column to the resumes table (for DB-side
+    PDF storage) and relaxes ``stored_filename`` / ``storage_path`` to
+    nullable so old disk-based rows coexist with new DB-stored rows.
+    Each statement uses ``IF NOT EXISTS`` / ``IF EXISTS`` where available,
+    making every run safe to repeat.
+    """
+    logger = logger_factory("app.lifespan.schema")
+    engine = get_engine()
+
+    migrations = [
+        # 1. Add file_data BYTEA column (skipped silently if already present)
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'resumes' AND column_name = 'file_data'
+            ) THEN
+                ALTER TABLE resumes ADD COLUMN file_data BYTEA;
+            END IF;
+        END $$;
+        """,
+        # 2. Allow stored_filename to be NULL (no-op if already nullable)
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'resumes'
+                  AND column_name = 'stored_filename'
+                  AND is_nullable = 'NO'
+            ) THEN
+                ALTER TABLE resumes ALTER COLUMN stored_filename DROP NOT NULL;
+            END IF;
+        END $$;
+        """,
+        # 3. Allow storage_path to be NULL (no-op if already nullable)
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'resumes'
+                  AND column_name = 'storage_path'
+                  AND is_nullable = 'NO'
+            ) THEN
+                ALTER TABLE resumes ALTER COLUMN storage_path DROP NOT NULL;
+            END IF;
+        END $$;
+        """,
+    ]
+
+    try:
+        async with engine.begin() as conn:
+            for sql in migrations:
+                await conn.execute(text(sql.strip()))
+        logger.info("Database migrations applied successfully [OK]")
+    except Exception as exc:
+        logger.warning("Migration step notice: %s", exc)
+
+
+
 async def _seed_initial_data() -> None:
     """Ensure default roles (ADMIN, RECRUITER, CANDIDATE) and default admin user exist."""
     logger = logger_factory("app.lifespan.seed")
@@ -151,6 +216,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Create static schema & seed initial roles/users on startup
     await _create_static_schema()
+    await _run_db_migrations()
     await _seed_initial_data()
 
     logger.info("SmartHire AI Backend ready [OK]")
