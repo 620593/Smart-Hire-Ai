@@ -3,12 +3,14 @@ from uuid import UUID
 from pydantic import BaseModel
 from app.db.enums import ResumeStatus
 
+
 class ResumeResponse(BaseModel):
     id: UUID
     user_id: UUID
     original_filename: str
-    stored_filename: str
-    storage_path: str
+    # These are nullable — present for local disk uploads, None for DB-stored uploads
+    stored_filename: str | None = None
+    storage_path: str | None = None
     file_size: int
     mime_type: str
     status: ResumeStatus
@@ -22,12 +24,15 @@ class ResumeResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class ResumeListResponse(BaseModel):
     resumes: list[ResumeResponse]
+
 
 class ResumeUploadResponse(BaseModel):
     message: str
     resume: ResumeResponse
+
 
 class ResumeUpdateResponse(BaseModel):
     message: str

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, Integer, String, func
+from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, Integer, LargeBinary, String, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -33,8 +33,11 @@ class Resume(BaseModel):
         nullable=False,
     )
     original_filename: Mapped[str] = mapped_column(String(length=255), nullable=False)
-    stored_filename: Mapped[str] = mapped_column(String(length=255), nullable=False)
-    storage_path: Mapped[str] = mapped_column(String(length=500), nullable=False)
+    # stored_filename / storage_path are kept for backward-compat but are nullable;
+    # new uploads store the binary in file_data (PostgreSQL BYTEA) instead of disk.
+    stored_filename: Mapped[str | None] = mapped_column(String(length=255), nullable=True)
+    storage_path: Mapped[str | None] = mapped_column(String(length=500), nullable=True)
+    file_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(length=100), nullable=False)
     status: Mapped[ResumeStatus] = mapped_column(
