@@ -15,6 +15,7 @@ import { RoleDashboard } from "@/pages/Dashboard/RoleDashboard";
 import { InterviewPage } from "@/pages/Interview/InterviewPage";
 import { ReportPage } from "@/pages/Report/ReportPage";
 import { ResumePage } from "@/pages/Resume/ResumePage";
+import { CandidatesPage } from "@/pages/Candidates/CandidatesPage";
 import { UnauthorizedPage } from "@/pages/Error/UnauthorizedPage";
 import { ForbiddenPage } from "@/pages/Error/ForbiddenPage";
 import { NotFoundPage } from "@/pages/NotFound/NotFoundPage";
@@ -108,6 +109,7 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
     children: [
       { path: "/dashboard", element: <RoleDashboard /> },
+      { path: "/candidates", element: <CandidatesPage /> },
       { path: "/interviews", element: <InterviewPage /> },
       { path: "/reports", element: <ReportPage /> },
       { path: "/resume", element: <ResumePage /> },
