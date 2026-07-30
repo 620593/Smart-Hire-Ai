@@ -78,9 +78,11 @@ def create_app() -> FastAPI:
         )
     else:
         # Use exact origins list (safe with credentials)
+        # Also add regex for any *.onrender.com subdomain in case Render changes URLs
         application.add_middleware(
             CORSMiddleware,
             allow_origins=origins_list,
+            allow_origin_regex=r"https://.*\.onrender\.com|http://localhost:\d+|http://127\.0\.0\.1:\d+",
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
