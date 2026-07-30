@@ -74,7 +74,7 @@ function StatCard({
 // Tab: Overview
 // ---------------------------------------------------------------------------
 
-function OverviewTab({ stats, loading }: { stats: PlatformStats | null; loading: boolean }) {
+function OverviewTab({ stats, loading, onNavigate }: { stats: PlatformStats | null; loading: boolean; onNavigate?: (tab: number) => void }) {
   return (
     <motion.div initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.07 } } }}>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
@@ -89,14 +89,15 @@ function OverviewTab({ stats, loading }: { stats: PlatformStats | null; loading:
       {/* Quick-action tiles */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
-          { icon: "how_to_reg",  title: "Recruiter Approvals",   body: "Review and approve new recruiter accounts waiting for access.",              tab: 1, cta: "Review Now",   color: "border-amber-500/30  bg-amber-500/5"  },
+          { icon: "how_to_reg",      title: "Recruiter Approvals",   body: "Review and approve new recruiter accounts waiting for access.",              tab: 1, cta: "Review Now",   color: "border-amber-500/30  bg-amber-500/5"  },
           { icon: "manage_accounts", title: "User Management",   body: "View, activate, or deactivate any user account on the platform.",            tab: 2, cta: "Manage Users", color: "border-primary/30    bg-primary/5"    },
-          { icon: "monitor_heart", title: "System Health",       body: "Live status of PostgreSQL, Gemini 3.1 Flash-Lite, and Groq llama-3.3-70b.",       tab: 3, cta: "Check Health", color: "border-emerald-500/30 bg-emerald-500/5" },
-        ].map(({ icon, title, body, cta, color }) => (
+          { icon: "smart_toy",       title: "AI Config & Health",   body: "Manage API Keys and live health status for Groq and Gemini AI services.",    tab: 3, cta: "Configure AI", color: "border-emerald-500/30 bg-emerald-500/5" },
+        ].map(({ icon, title, body, cta, color, tab }) => (
           <motion.div
             key={title}
             variants={fade}
-            className={`glass-card p-6 rounded-xl border ${color} flex flex-col gap-3`}
+            onClick={() => onNavigate?.(tab)}
+            className={`glass-card p-6 rounded-xl border ${color} flex flex-col gap-3 cursor-pointer hover:scale-[1.01] transition-transform`}
           >
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-xl">{icon}</span>
@@ -719,15 +720,66 @@ function ApiKeysTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Tab: AI Config (combines API Keys & System Health)
+// ---------------------------------------------------------------------------
+
+function AiConfigTab() {
+  const [subTab, setSubTab] = useState<"keys" | "health">("keys");
+
+  return (
+    <div className="space-y-6">
+      {/* Sub-tab Pills */}
+      <div className="flex items-center gap-2 p-1.5 bg-slate-900/60 border border-white/10 rounded-xl w-fit">
+        <button
+          onClick={() => setSubTab("keys")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            subTab === "keys"
+              ? "bg-[#5b5cf6]/20 text-white border border-[#5b5cf6]/30 shadow-md"
+              : "text-slate-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <span className="material-symbols-outlined text-base text-[#5b5cf6]">key</span>
+          API Keys Configuration
+        </button>
+        <button
+          onClick={() => setSubTab("health")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            subTab === "health"
+              ? "bg-emerald-500/20 text-white border border-emerald-500/30 shadow-md"
+              : "text-slate-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <span className="material-symbols-outlined text-base text-emerald-400">monitor_heart</span>
+          System Health & Status
+        </button>
+      </div>
+
+      {/* Sub-tab view */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={subTab}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.15 }}
+        >
+          {subTab === "keys" && <ApiKeysTab />}
+          {subTab === "health" && <SystemHealthTab />}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 
 const TABS = [
-  { id: 0, label: "Overview",      icon: "dashboard"       },
-  { id: 1, label: "Recruiters",    icon: "badge"           },
-  { id: 2, label: "All Users",     icon: "group"           },
-  { id: 3, label: "System Health", icon: "monitor_heart"   },
-  { id: 4, label: "API Keys",      icon: "key"             },
+  { id: 0, label: "Overview",   icon: "dashboard" },
+  { id: 1, label: "Recruiters", icon: "badge"     },
+  { id: 2, label: "All Users",  icon: "group"     },
+  { id: 3, label: "AI Config",  icon: "smart_toy" },
 ];
 
 export function AdminDashboardPage() {
@@ -796,11 +848,10 @@ export function AdminDashboardPage() {
       <AnimatePresence mode="wait">
         <motion.div key={activeTab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
           transition={{ duration: 0.18 }}>
-          {activeTab === 0 && <OverviewTab stats={stats} loading={statsLoading} />}
+          {activeTab === 0 && <OverviewTab stats={stats} loading={statsLoading} onNavigate={(tab) => setActiveTab(tab)} />}
           {activeTab === 1 && <RecruitersTab />}
           {activeTab === 2 && <UsersTab />}
-          {activeTab === 3 && <SystemHealthTab />}
-          {activeTab === 4 && <ApiKeysTab />}
+          {activeTab === 3 && <AiConfigTab />}
         </motion.div>
       </AnimatePresence>
     </div>
